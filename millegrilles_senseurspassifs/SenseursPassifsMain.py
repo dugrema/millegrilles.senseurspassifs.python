@@ -40,6 +40,9 @@ class ApplicationInstance:
         self.__loop = asyncio.get_event_loop()
         self._stop_event = Event()
         self.__configuration.parse_config(args.__dict__)
+
+        self.__etat_senseurspassifs.ajouter_listener(self.__senseur_modules_handler.reload_configuration)
+
         await self.__etat_senseurspassifs.reload_configuration()
 
         # self.__module_entretien_rabbitmq = EntretienRabbitMq(self.__etat_midcompte)
