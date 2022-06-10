@@ -1,0 +1,65 @@
+import json
+import logging
+
+from asyncio import Event
+from typing import Optional
+
+from millegrilles_messages.messages.CleCertificat import CleCertificat
+from millegrilles_senseurspassifs.Configuration import ConfigurationSenseursPassifs
+from millegrilles_messages.messages.EnveloppeCertificat import EnveloppeCertificat
+from millegrilles_messages.messages.FormatteurMessages import SignateurTransactionSimple, FormatteurMessageMilleGrilles
+from millegrilles_messages.messages.ValidateurCertificats import ValidateurCertificatCache
+from millegrilles_messages.messages.ValidateurMessage import ValidateurMessage
+
+
+class EtatSenseursPassifs:
+
+    def __init__(self, configuration: ConfigurationSenseursPassifs):
+        self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
+        self.__configuration = configuration
+
+        self.__configuration_json: Optional[dict] = None
+        self.__clecertificat: Optional[CleCertificat] = None
+        self.__certificat_millegrille: Optional[EnveloppeCertificat] = None
+
+        self.__listeners_actions = list()
+
+        self.__formatteur_message: Optional[FormatteurMessageMilleGrilles] = None
+        self.__validateur_certificats: Optional[ValidateurCertificatCache] = None
+        self.__validateur_message: Optional[ValidateurMessage] = None
+
+        self.__stop_event: Optional[Event] = None
+
+    async def reload_configuration(self):
+        self.__logger.info("Reload configuration sur disque ou dans docker")
+
+        config_path = self.__configuration.config_path
+        with open(config_path, 'r') as fichier:
+            self.__configuration_json = json.load(fichier)
+
+        # Charger et verificat cle/certificat
+        self.__clecertificat = CleCertificat.from_files(
+            self.__configuration.key_pem_path, self.__configuration.cert_pem_path)
+
+        self.__certificat_millegrille = EnveloppeCertificat.from_file(self.__configuration.ca_pem_path)
+
+        if self.__clecertificat is not None:
+            idmg = self.__clecertificat.enveloppe.idmg
+            signateur = SignateurTransactionSimple(self.__clecertificat)
+            self.__formatteur_message = FormatteurMessageMilleGrilles(idmg, signateur)
+            self.__validateur_certificats = ValidateurCertificatCache(self.__certificat_millegrille)
+            self.__validateur_message = ValidateurMessage(self.__validateur_certificats)
+
+        for listener in self.__listeners_actions:
+            await listener()
+
+    def ajouter_listener(self, listener):
+        self.__listeners_actions.append(listener)
+
+    @property
+    def configuration(self):
+        return self.__configuration
+
+    @property
+    def clecertificat(self):
+        return self.__clecertificat
