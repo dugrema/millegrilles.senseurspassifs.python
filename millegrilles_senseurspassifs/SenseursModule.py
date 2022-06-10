@@ -144,7 +144,7 @@ class SenseurModuleProducerAbstract:
     def __init__(self, etat_senseurspassifs: EtatSenseursPassifs, no_senseur: str, lecture_callback):
         self._etat_senseurspassifs = etat_senseurspassifs
         self._no_senseur = no_senseur
-        self._lecture_callback = lecture_callback
+        self.__lecture_callback = lecture_callback
 
         self._event_stop: Optional[Event] = None
 
@@ -155,6 +155,14 @@ class SenseurModuleProducerAbstract:
         """
         # Note : placeholder, aucun effet (wait forever) - override si necessaire
         await self._event_stop.wait()
+
+    async def lecture(self, senseurs: dict):
+        """
+        Utiliser pour emettre une lecture.
+        :param senseurs:
+        :return:
+        """
+        await self.__lecture_callback(self._no_senseur, senseurs)
 
 
 class SenseurModuleConsumerAbstract:
@@ -207,4 +215,4 @@ class DummyProducer(SenseurModuleProducerAbstract):
 
         self.__logger.debug("Produire lecture dummy %s" % dict_message)
 
-        await self._lecture_callback(self._no_senseur, dict_message)
+        await self.lecture(dict_message)
