@@ -35,6 +35,7 @@ class EtatSenseursPassifs:
 
         # self.__stop_event: Optional[Event] = None
         self.__producer: Optional[MessageProducerFormatteur] = None
+        self.__partition: Optional[str] = None
 
     async def reload_configuration(self):
         self.__logger.info("Reload configuration sur disque ou dans docker")
@@ -97,3 +98,10 @@ class EtatSenseursPassifs:
     @property
     def producer(self):
         return self.__producer
+
+    def set_partition(self, partition: str):
+        self.__partition = partition
+
+    @property
+    def partition(self):
+        return self.__partition

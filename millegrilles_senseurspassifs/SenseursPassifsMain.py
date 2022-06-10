@@ -86,7 +86,7 @@ class ApplicationInstance:
         tasks = [
             asyncio.create_task(self.entretien()),
             asyncio.create_task(self.__rabbitmq_dao.run()),
-            # asyncio.create_task(self.__web_server.run(self._stop_event))
+            asyncio.create_task(self.__senseur_modules_handler.run())
         ]
 
         # Execution de la loop avec toutes les tasks
