@@ -10,6 +10,7 @@ from typing import Optional
 from millegrilles_messages.docker.Entretien import TacheEntretien
 from millegrilles_senseurspassifs.Configuration import ConfigurationSenseursPassifs
 from millegrilles_senseurspassifs.EtatSenseursPassifs import EtatSenseursPassifs
+from millegrilles_senseurspassifs.RabbitMQDao import RabbitMQDao
 
 
 class ApplicationInstance:
@@ -18,13 +19,15 @@ class ApplicationInstance:
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
 
         self.__configuration = ConfigurationSenseursPassifs()
-        self.__etat_midcompte = EtatSenseursPassifs(self.__configuration)
+        self.__etat_senseurspassifs = EtatSenseursPassifs(self.__configuration)
 
         # self.__module_entretien_rabbitmq: Optional[EntretienRabbitMq] = None
         # self.__tache_rabbitmq = TacheEntretien(datetime.timedelta(seconds=30), self.entretien_rabbitmq)
 
         self.__loop: Optional[AbstractEventLoop] = None
         self._stop_event: Optional[Event] = None  # Evenement d'arret global de l'application
+
+        self.__rabbitmq_dao: Optional[RabbitMQDao] = None
 
     async def charger_configuration(self, args: argparse.Namespace):
         """
@@ -35,10 +38,12 @@ class ApplicationInstance:
         self.__loop = asyncio.get_event_loop()
         self._stop_event = Event()
         self.__configuration.parse_config(args.__dict__)
-        await self.__etat_midcompte.reload_configuration()
+        await self.__etat_senseurspassifs.reload_configuration()
 
         # self.__module_entretien_rabbitmq = EntretienRabbitMq(self.__etat_midcompte)
         # self.__etat_midcompte.ajouter_listener(self.__module_entretien_rabbitmq)
+
+        self.__rabbitmq_dao = RabbitMQDao(self._stop_event, self.__etat_senseurspassifs)
 
         self.__logger.info("charger_configuration prete")
 
@@ -76,6 +81,7 @@ class ApplicationInstance:
 
         tasks = [
             asyncio.create_task(self.entretien()),
+            asyncio.create_task(self.__rabbitmq_dao.run()),
             # asyncio.create_task(self.__web_server.run(self._stop_event))
         ]
 
