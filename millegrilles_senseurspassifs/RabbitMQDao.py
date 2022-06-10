@@ -15,11 +15,12 @@ from millegrilles_senseurspassifs import Constantes as ConstantesInstance
 
 class MqThread:
 
-    def __init__(self, event_stop: Event, etat_senseurspassifs, command_handler: CommandHandler):
+    def __init__(self, event_stop: Event, etat_senseurspassifs, command_handler: CommandHandler, routing_keys_consumers: list):
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self.__event_stop = event_stop
         self.__etat_senseurspassifs = etat_senseurspassifs
         self.__command_handler = command_handler
+        self.__routing_key_consumers = routing_keys_consumers
 
         self.__mq_host: Optional[str] = None
         self.__mq_port: Optional[str] = None
@@ -50,8 +51,8 @@ class MqThread:
         reply_res = RessourcesConsommation(self.callback_reply_q)
 
         # RK Public pour toutes les instances
-        # reply_res.ajouter_rk(Constantes.SECURITE_PUBLIC, 'requete.instance.%s.%s' % (
-        #     instance_id, ConstantesInstance.REQUETE_CONFIGURATION_ACME))
+        for rk in self.__routing_key_consumers:
+            reply_res.ajouter_rk(Constantes.SECURITE_PRIVE, rk)
 
         messages_thread.set_reply_ressources(reply_res)
 
@@ -103,18 +104,20 @@ class MqThread:
 
 class RabbitMQDao:
 
-    def __init__(self, event_stop: Event, etat_senseurspassifs):
+    def __init__(self, event_stop: Event, etat_senseurspassifs, modules_handler):
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self.__event_stop = event_stop
         self.__etat_senseurspassifs = etat_senseurspassifs
+        self.__modules_handler = modules_handler
 
-        self.__command_handler = CommandHandler(etat_senseurspassifs)
+        self.__command_handler = CommandHandler(etat_senseurspassifs, modules_handler)
 
         self.__producer: Optional[MessageProducerFormatteur] = None
         self.__mq_thread: Optional[MqThread] = None
 
     async def creer_thread(self):
-        return MqThread(self.__event_stop, self.__etat_senseurspassifs, self.__command_handler)
+        routing_keys = self.__modules_handler.get_routing_key_consumers()
+        return MqThread(self.__event_stop, self.__etat_senseurspassifs, self.__command_handler, routing_keys)
 
     def get_producer(self) -> Optional[MessageProducerFormatteur]:
         return self.__producer

@@ -11,6 +11,7 @@ from typing import Optional
 from os import path, makedirs
 
 from millegrilles_messages.messages import Constantes
+from millegrilles_messages.messages.MessagesModule import MessageWrapper
 from millegrilles_senseurspassifs.EtatSenseursPassifs import EtatSenseursPassifs
 from millegrilles_senseurspassifs import Constantes as ConstantesSenseursPassifs
 
@@ -36,7 +37,7 @@ class SenseurModuleHandler:
 
         if args.dummylcd is True:
             self.__logger.info("Activer dummy LCD")
-            raise NotImplementedError('todo')
+            self.__modules_consumer.append(DummyConsumer(self.__etat_senseurspassifs, 'dummy_lcd'))
 
     async def reload_configuration(self):
         path_logs = self.__etat_senseurspassifs.configuration.lecture_log_directory
@@ -92,7 +93,7 @@ class SenseurModuleHandler:
             for consumer in self.__modules_consumer:
                 await consumer.traiter(message)
 
-    async def recevoir_confirmation_lecture(self, message):
+    async def recevoir_confirmation_lecture(self, message: MessageWrapper):
         """
         Recoit tous les evenements de confirmation de lectures
         :param message:
@@ -135,6 +136,14 @@ class SenseurModuleHandler:
     def producer(self):
         return self.__etat_senseurspassifs.producer
 
+    def get_routing_key_consumers(self) -> list:
+        # Creer liste de routing keys (dedupe avec set)
+        routing_keys = set()
+        for consumer in self.__modules_consumer:
+            routing_keys.update(consumer.routing_keys())
+
+        return list(routing_keys)
+
 
 class SenseurModuleProducerAbstract:
     """
@@ -146,15 +155,13 @@ class SenseurModuleProducerAbstract:
         self._no_senseur = no_senseur
         self.__lecture_callback = lecture_callback
 
-        self._event_stop: Optional[Event] = None
-
     async def run(self):
         """
         Override pour executer une task d'entretien
         :return:
         """
         # Note : placeholder, aucun effet (wait forever) - override si necessaire
-        await self._event_stop.wait()
+        await Event().wait()
 
     async def lecture(self, senseurs: dict):
         """
@@ -170,11 +177,20 @@ class SenseurModuleConsumerAbstract:
     Module de reception de lectures (e.g. affichage LCD)
     """
 
-    def __init__(self):
-        pass
+    def __init__(self, etat_senseurspassifs, no_senseur: str):
+        self._etat_senseurspassifs = etat_senseurspassifs
+        self._no_senseur = no_senseur
 
-    def traiter(self, message):
-        pass
+    async def run(self):
+        """
+        Override pour executer une task d'entretien
+        :return:
+        """
+        # Note : placeholder, aucun effet (wait forever) - override si necessaire
+        await Event().wait()
+
+    async def traiter(self, message):
+        raise NotImplementedError("Override")
 
     def routing_keys(self) -> list:
         raise NotImplementedError("Override")
@@ -216,3 +232,27 @@ class DummyProducer(SenseurModuleProducerAbstract):
         self.__logger.debug("Produire lecture dummy %s" % dict_message)
 
         await self.lecture(dict_message)
+
+
+class DummyConsumer(SenseurModuleConsumerAbstract):
+
+    def __init__(self, etat_senseurspassifs, no_senseur: str):
+        super().__init__(etat_senseurspassifs, no_senseur)
+        self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
+
+    async def traiter(self, message):
+        self.__logger.debug("DummyConsumer Traiter message %s" % message)
+        # Matcher message pour ce senseur
+        if message.get('interne') is True:
+            message_recu = message['message']
+        elif message.get('confirmation') is True:
+            message_recu = message['message'].parsed
+        else:
+            return
+
+        if message_recu.get('uuid_senseur') == 'dummy_1':
+            senseurs = message_recu['senseurs']
+            self.__logger.info("DummyConsumer recu lecture %s" % senseurs)
+
+    def routing_keys(self) -> list:
+        return ['evenement.SenseursPassifs.lectureConfirmee']

@@ -48,9 +48,9 @@ class ApplicationInstance:
         # self.__module_entretien_rabbitmq = EntretienRabbitMq(self.__etat_midcompte)
         # self.__etat_midcompte.ajouter_listener(self.__module_entretien_rabbitmq)
 
-        self.__rabbitmq_dao = RabbitMQDao(self._stop_event, self.__etat_senseurspassifs)
-
         await self.__senseur_modules_handler.preparer_modules(args)
+
+        self.__rabbitmq_dao = RabbitMQDao(self._stop_event, self.__etat_senseurspassifs, self.__senseur_modules_handler)
 
         self.__logger.info("charger_configuration prete")
 

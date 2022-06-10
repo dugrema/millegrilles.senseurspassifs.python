@@ -15,9 +15,11 @@ from millegrilles_messages.messages.MessagesModule import MessageWrapper
 
 class CommandHandler:
 
-    def __init__(self, etat_senseurspassifs):
+    def __init__(self, etat_senseurspassifs, modules_handler):
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self._etat_instance = etat_senseurspassifs
+        self._modules_handler = modules_handler
+        self.__routing_keys_modules = modules_handler.get_routing_key_consumers()
 
     async def executer_commande(self, producer: MessageProducerFormatteur, message: MessageWrapper):
         reponse = None
@@ -54,6 +56,8 @@ class CommandHandler:
             #     if Constantes.ROLE_CORE in roles:
             #         if action == ConstantesInstance.EVENEMENT_TOPOLOGIE_FICHEPUBLIQUE:
             #             return await self.sauvegarder_fiche_publique(message)
+            if routing_key in self.__routing_keys_modules:
+                return await self._modules_handler.recevoir_confirmation_lecture(message)
 
             if reponse is None:
                 reponse = {'ok': False, 'err': 'Commande inconnue ou acces refuse'}
