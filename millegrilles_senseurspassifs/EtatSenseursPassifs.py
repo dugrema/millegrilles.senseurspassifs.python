@@ -10,6 +10,7 @@ from millegrilles_messages.messages.FormatteurMessages import SignateurTransacti
 from millegrilles_messages.messages.ValidateurCertificats import ValidateurCertificatCache
 from millegrilles_messages.messages.ValidateurMessage import ValidateurMessage
 from millegrilles_senseurspassifs.Configuration import ConfigurationSenseursPassifs
+from millegrilles_messages.messages.MessagesModule import MessageProducerFormatteur
 
 
 class EtatSenseursPassifs:
@@ -32,7 +33,8 @@ class EtatSenseursPassifs:
         self.__validateur_certificats: Optional[ValidateurCertificatCache] = None
         self.__validateur_message: Optional[ValidateurMessage] = None
 
-        self.__stop_event: Optional[Event] = None
+        # self.__stop_event: Optional[Event] = None
+        self.__producer: Optional[MessageProducerFormatteur] = None
 
     async def reload_configuration(self):
         self.__logger.info("Reload configuration sur disque ou dans docker")
@@ -88,3 +90,10 @@ class EtatSenseursPassifs:
     @property
     def mq_port(self):
         return self.__mq_port
+
+    def set_producer(self, producer: MessageProducerFormatteur):
+        self.__producer = producer
+
+    @property
+    def producer(self):
+        return self.__producer

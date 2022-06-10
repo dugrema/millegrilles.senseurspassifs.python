@@ -11,6 +11,7 @@ from millegrilles_messages.docker.Entretien import TacheEntretien
 from millegrilles_senseurspassifs.Configuration import ConfigurationSenseursPassifs
 from millegrilles_senseurspassifs.EtatSenseursPassifs import EtatSenseursPassifs
 from millegrilles_senseurspassifs.RabbitMQDao import RabbitMQDao
+from millegrilles_senseurspassifs.SenseursModule import SenseurModuleHandler
 
 
 class ApplicationInstance:
@@ -28,6 +29,7 @@ class ApplicationInstance:
         self._stop_event: Optional[Event] = None  # Evenement d'arret global de l'application
 
         self.__rabbitmq_dao: Optional[RabbitMQDao] = None
+        self.__senseur_modules_handler = SenseurModuleHandler(self.__etat_senseurspassifs)
 
     async def charger_configuration(self, args: argparse.Namespace):
         """
@@ -44,6 +46,8 @@ class ApplicationInstance:
         # self.__etat_midcompte.ajouter_listener(self.__module_entretien_rabbitmq)
 
         self.__rabbitmq_dao = RabbitMQDao(self._stop_event, self.__etat_senseurspassifs)
+
+        await self.__senseur_modules_handler.preparer_modules(args)
 
         self.__logger.info("charger_configuration prete")
 
@@ -120,6 +124,14 @@ def parse():
         '--verbose', action="store_true", required=False,
         help="Active le logging maximal"
     )
+    parser.add_argument(
+        '--dummysenseurs', action="store_true", required=False,
+        help="Initalise un emetteur de lecture dummy, pour tester la connexion"
+    )
+    parser.add_argument(
+        '--dummylcd', action="store_true", required=False,
+        help="Initalise un affichage dummy vers logs, pour tester AffichagesPassifs"
+    )
 
     args = parser.parse_args()
     if args.verbose:
@@ -135,7 +147,7 @@ async def demarrer():
 
     logger.info("Setup app")
     app = await initialiser_application()
-    # await app.preparer_environnement()
+    # await app.preparer_modules()
 
     try:
         logger.info("Debut execution app")

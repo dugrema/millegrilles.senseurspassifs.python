@@ -133,6 +133,7 @@ class RabbitMQDao:
                 self.__mq_thread = await self.creer_thread()
                 await self.__mq_thread.configurer()
                 self.__producer = self.__mq_thread.get_producer()
+                self.__etat_senseurspassifs.set_producer(self.__producer)  # Hook producer globalement
 
                 await self.__mq_thread.run()
             except Exception as e:
@@ -140,6 +141,7 @@ class RabbitMQDao:
             finally:
                 self.__mq_thread = None
                 self.__producer = None
+                self.__etat_senseurspassifs.set_producer(None)  # Cleanup hook producer globalement
 
             # Attendre pour redemarrer execution module
             self.__logger.info("Fin thread asyncio MessagesThread, attendre 30 secondes pour redemarrer")
