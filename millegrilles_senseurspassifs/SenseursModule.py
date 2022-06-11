@@ -150,7 +150,8 @@ class SenseurModuleProducerAbstract:
     Module de production de lectures
     """
 
-    def __init__(self, etat_senseurspassifs: EtatSenseursPassifs, no_senseur: str, lecture_callback):
+    def __init__(self, handler: SenseurModuleHandler, etat_senseurspassifs: EtatSenseursPassifs, no_senseur: str, lecture_callback):
+        self._handler = handler
         self._etat_senseurspassifs = etat_senseurspassifs
         self._no_senseur = no_senseur
         self.__lecture_callback = lecture_callback
@@ -177,8 +178,9 @@ class SenseurModuleConsumerAbstract:
     Module de reception de lectures (e.g. affichage LCD)
     """
 
-    def __init__(self, etat_senseurspassifs: EtatSenseursPassifs, no_senseur: str):
+    def __init__(self, handler: SenseurModuleHandler, etat_senseurspassifs: EtatSenseursPassifs, no_senseur: str):
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
+        self._handler = handler
         self._etat_senseurspassifs = etat_senseurspassifs
         self._no_senseur = no_senseur
         self._configuration_hub: Optional[dict] = None
@@ -246,9 +248,6 @@ class SenseurModuleConsumerAbstract:
     def routing_keys(self) -> list:
         raise NotImplementedError('Override')
 
-    async def rafraichir(self):
-        raise NotImplementedError('Override')
-
 
 class DummyProducer(SenseurModuleProducerAbstract):
     """
@@ -256,9 +255,8 @@ class DummyProducer(SenseurModuleProducerAbstract):
     """
 
     def __init__(self, handler: SenseurModuleHandler, etat_senseurspassifs: EtatSenseursPassifs, no_senseur: str, lecture_callback):
-        super().__init__(etat_senseurspassifs, no_senseur, lecture_callback)
+        super().__init__(handler, etat_senseurspassifs, no_senseur, lecture_callback)
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
-        self._handler = handler
 
     async def run(self):
         event_attente = Event()
@@ -298,9 +296,8 @@ class DummyConsumer(SenseurModuleConsumerAbstract):
     """
 
     def __init__(self, handler: SenseurModuleHandler, etat_senseurspassifs, no_senseur: str):
-        super().__init__(etat_senseurspassifs, no_senseur)
+        super().__init__(handler, etat_senseurspassifs, no_senseur)
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
-        self._handler = handler
 
         self.__uuid_senseurs = list()
 
