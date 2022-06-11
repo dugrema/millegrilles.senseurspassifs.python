@@ -11,7 +11,7 @@ from typing import Optional
 from os import path, makedirs
 
 from millegrilles_messages.messages import Constantes
-from millegrilles_messages.messages.MessagesModule import MessageWrapper
+from millegrilles_messages.messages.MessagesModule import MessageWrapper, MessageProducerFormatteur
 from millegrilles_senseurspassifs.EtatSenseursPassifs import EtatSenseursPassifs
 from millegrilles_senseurspassifs import Constantes as ConstantesSenseursPassifs
 
@@ -178,6 +178,7 @@ class SenseurModuleConsumerAbstract:
     """
 
     def __init__(self, etat_senseurspassifs, no_senseur: str):
+        self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self._etat_senseurspassifs = etat_senseurspassifs
         self._no_senseur = no_senseur
 
@@ -194,6 +195,22 @@ class SenseurModuleConsumerAbstract:
 
     def routing_keys(self) -> list:
         raise NotImplementedError("Override")
+
+    async def get_configuration_hub(self):
+        producer: MessageProducerFormatteur = self._etat_senseurspassifs.producer
+        if producer is not None:
+            try:
+                await asyncio.wait_for(producer.producer_pret().wait(), 5)
+
+                requete = {'instance_id': self._etat_senseurspassifs.instance_id}
+                configuration_hub = await producer.executer_requete(
+                    requete, ConstantesSenseursPassifs.DOMAINE_SENSEURSPASSIFS,
+                    ConstantesSenseursPassifs.REQUETE_GET_NOEUD, Constantes.SECURITE_PRIVE)
+
+                return configuration_hub.parsed
+
+            except TimeoutError:
+                self.__logger.warning("get_configuration_hub Timeout producer - Echec requete configuration hub")
 
 
 class DummyProducer(SenseurModuleProducerAbstract):
@@ -240,6 +257,21 @@ class DummyConsumer(SenseurModuleConsumerAbstract):
         super().__init__(etat_senseurspassifs, no_senseur)
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
 
+        self.__configuration_hub: Optional[dict] = None
+        self.__event_attente: Optional[Event] = None
+
+    async def run(self):
+        self.__event_attente = Event()
+        while self.__event_attente.is_set() is False:
+
+            if self.__configuration_hub is None:
+                # Chargement initial de la configuration du hub
+                self.__configuration_hub = await self.get_configuration_hub()
+            try:
+                await asyncio.wait_for(self.__event_attente.wait(), 30)
+            except TimeoutError:
+                pass
+
     async def traiter(self, message):
         self.__logger.debug("DummyConsumer Traiter message %s" % message)
         # Matcher message pour ce senseur
@@ -255,4 +287,10 @@ class DummyConsumer(SenseurModuleConsumerAbstract):
             self.__logger.info("DummyConsumer recu lecture %s" % senseurs)
 
     def routing_keys(self) -> list:
-        return ['evenement.SenseursPassifs.lectureConfirmee']
+        """
+        :return: list de routing keys utilisees par ce module
+        """
+        return [
+            'evenement.SenseursPassifs.lectureConfirmee',
+            'evenement.SenseursPassifs.%s.majNoeud' % self._etat_senseurspassifs.instance_id,
+        ]
