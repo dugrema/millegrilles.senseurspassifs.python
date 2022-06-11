@@ -16,4 +16,11 @@ class ApplicationRpi(ApplicationInstance):
             '--lcd2lines', action="store_true", required=False,
             help="Initialise l'affichage LCD 2 lignes via TWI (I2C)"
         )
-
+        parser.add_argument(
+            '--rf24master', action="store_true", required=False,
+            help="Active le hub nRF24L01"
+        )
+        parser.add_argument(
+            '--dht', type=int,
+            required=False, help="Active le senseur DHT (AM2302) sur pin N"
+        )

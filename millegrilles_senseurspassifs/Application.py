@@ -55,6 +55,10 @@ class ApplicationInstance:
             help="Active le logging maximal"
         )
         parser.add_argument(
+            '--timezone', type=str, required=False,
+            help="Timezone pytz pour l'horloge, ex: America/Halifax"
+        )
+        parser.add_argument(
             '--dummysenseurs', action="store_true", required=False,
             help="Initalise un emetteur de lecture dummy, pour tester la connexion (debug)"
         )

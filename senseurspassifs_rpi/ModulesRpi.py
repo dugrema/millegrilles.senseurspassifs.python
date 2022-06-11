@@ -6,9 +6,10 @@ from typing import Optional
 
 from millegrilles_senseurspassifs.AffichagePassif import ModuleAfficheLignes
 from millegrilles_senseurspassifs.EtatSenseursPassifs import EtatSenseursPassifs
-from millegrilles_senseurspassifs.SenseursModule import SenseurModuleHandler
+from millegrilles_senseurspassifs.SenseursModule import SenseurModuleHandler, SenseurModuleProducerAbstract
 
 from senseurspassifs_rpi.RPiTWI import LcdHandler
+from senseurspassifs_rpi.AdafruitDHT import ThermometreAdafruitGPIO
 
 
 class RpiModuleHandler(SenseurModuleHandler):
@@ -23,7 +24,12 @@ class RpiModuleHandler(SenseurModuleHandler):
         if args.lcd2lines is True:
             self.__logger.info("Activer LCD 2 lignes via TWI")
             affichage_lcd = await asyncio.to_thread(AffichageLCD2Lignes, self, self._etat_senseurspassifs, 'LCD2LignesTWI')
-            self._modules_producer.append(affichage_lcd)
+            self._modules_consumer.append(affichage_lcd)
+
+        if args.dht is not None:
+            pin = args.dht
+            senseur_dht = SenseurDHT(self, self._etat_senseurspassifs, pin, self.traiter_lecture_interne)
+            self._modules_producer.append(senseur_dht)
 
 
 class AffichageLCD2Lignes(ModuleAfficheLignes):
@@ -65,3 +71,25 @@ class AffichageLCD2Lignes(ModuleAfficheLignes):
                 ligne = ''  # Vider le contenu de la ligne
 
             self.__lcd_handler.lcd_string(ligne, position)
+
+
+class SenseurDHT(SenseurModuleProducerAbstract):
+
+    def __init__(self, handler: SenseurModuleHandler, etat_senseurspassifs: EtatSenseursPassifs, pin: int, lecture_callback):
+        instance_id = self._etat_senseurspassifs.instance_id
+        no_senseur = '%s_DHT' % instance_id
+        super().__init__(handler, etat_senseurspassifs, no_senseur, lecture_callback)
+        self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
+        self._reader = ThermometreAdafruitGPIO(uuid_senseur=no_senseur, pin=pin)
+
+    async def run(self):
+        try:
+            lecture = await self._reader.lire()
+            senseurs = lecture['senseurs']
+
+            # Transmettre lecture
+            await self.lecture(senseurs)
+
+            await asyncio.sleep(10)
+        except asyncio.TimeoutError:
+            pass
