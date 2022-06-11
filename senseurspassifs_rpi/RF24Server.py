@@ -327,7 +327,7 @@ class NRF24Server:
         self.thread = None
 
         # Path et fichiers de configuration
-        path_configuration = environ.get('RF24_CONFIG_PATH') or Constantes.PATH_CONFIGURATION
+        path_configuration = environ.get('RF24_CONFIG_PATH') or ConstantesRPi.PATH_CONFIGURATION
 
         self.__path_configuration_reseau = environ.get('RF24_RESEAU_CONF') or \
             path.join(path_configuration, Constantes.FICHIER_CONFIG_RESEAU)
