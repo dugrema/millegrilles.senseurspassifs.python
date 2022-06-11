@@ -11,6 +11,7 @@ class ApplicationRpi(ApplicationInstance):
         return RpiModuleHandler(self._etat_senseurspassifs)
 
     def _add_arguments(self, parser: argparse.ArgumentParser):
+        super()._add_arguments(parser)
         parser.add_argument(
             '--lcd2lines', action="store_true", required=False,
             help="Initialise l'affichage LCD 2 lignes via TWI (I2C)"
