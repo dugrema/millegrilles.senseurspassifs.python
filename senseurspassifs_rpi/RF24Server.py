@@ -36,7 +36,7 @@ from senseurspassifs_rpi.ProtocoleVersion9 import VERSION_PROTOCOLE, \
     AssembleurPaquets, Paquet0, PaquetDemandeDHCP, PaquetBeaconDHCP, PaquetReponseDHCP, TypesMessages
 
 
-class Constantes(ConstantesRPi):
+class Constantes:
     MG_CHANNEL_PROD = 0x5e
     MG_CHANNEL_INT = 0x24
     MG_CHANNEL_DEV = 0x0c
