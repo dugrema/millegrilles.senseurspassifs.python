@@ -1,6 +1,8 @@
 # Module pour les classes d'appareils utilises avec un Raspberry Pi (2, 3).
+import asyncio
 import datetime
 import logging
+
 import Adafruit_DHT  # https://github.com/adafruit/Adafruit_Python_DHT.git
 
 
@@ -16,7 +18,9 @@ class ThermometreAdafruitGPIO:
         self._sensor = sensor
 
     async def lire(self):
-        humidite, temperature = Adafruit_DHT.read_retry(self._sensor, self._pin)
+
+        # Effectuer lecture avec threadpool
+        humidite, temperature = await asyncio.to_thread(Adafruit_DHT.read_retry, self._sensor, self._pin)
 
         self.__logger.debug("Lecture senseur : temperature = %s, humidite = %s" % (temperature, humidite))
 
