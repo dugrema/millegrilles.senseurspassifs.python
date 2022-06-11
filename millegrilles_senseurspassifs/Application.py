@@ -20,7 +20,7 @@ class ApplicationInstance:
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
 
         self.__configuration = ConfigurationSenseursPassifs()
-        self.__etat_senseurspassifs = EtatSenseursPassifs(self.__configuration)
+        self._etat_senseurspassifs = EtatSenseursPassifs(self.__configuration)
 
         # self.__module_entretien_rabbitmq: Optional[EntretienRabbitMq] = None
         # self.__tache_rabbitmq = TacheEntretien(datetime.timedelta(seconds=30), self.entretien_rabbitmq)
@@ -33,7 +33,7 @@ class ApplicationInstance:
 
     def init_module_handler(self):
         # return SenseurModuleHandler(self.__etat_senseurspassifs)
-        return ModuleHandlerBase(self.__etat_senseurspassifs)
+        return ModuleHandlerBase(self._etat_senseurspassifs)
 
     def parse(self):
         parser = argparse.ArgumentParser(description="Demarrer l'application Senseurs Passifs de MilleGrilles")
@@ -76,16 +76,16 @@ class ApplicationInstance:
         self._stop_event = Event()
         self.__configuration.parse_config(args.__dict__)
 
-        self.__etat_senseurspassifs.ajouter_listener(self._senseur_modules_handler.reload_configuration)
+        self._etat_senseurspassifs.ajouter_listener(self._senseur_modules_handler.reload_configuration)
 
-        await self.__etat_senseurspassifs.reload_configuration()
+        await self._etat_senseurspassifs.reload_configuration()
 
         # self.__module_entretien_rabbitmq = EntretienRabbitMq(self.__etat_midcompte)
         # self.__etat_midcompte.ajouter_listener(self.__module_entretien_rabbitmq)
 
         await self._senseur_modules_handler.preparer_modules(args)
 
-        self.__rabbitmq_dao = RabbitMQDao(self._stop_event, self.__etat_senseurspassifs, self._senseur_modules_handler)
+        self.__rabbitmq_dao = RabbitMQDao(self._stop_event, self._etat_senseurspassifs, self._senseur_modules_handler)
 
         self.__logger.info("charger_configuration prete")
 

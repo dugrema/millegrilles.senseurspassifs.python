@@ -12,6 +12,9 @@ from senseurspassifs_rpi.RPiTWI import LcdHandler
 
 class RpiModuleHandler(SenseurModuleHandler):
 
+    def __init__(self, etat_senseurspassifs: EtatSenseursPassifs):
+        super().__init__(etat_senseurspassifs)
+
     async def preparer_modules(self, args: argparse.Namespace):
         await super().preparer_modules(args)
 
