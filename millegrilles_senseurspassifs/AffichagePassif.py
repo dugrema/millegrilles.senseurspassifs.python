@@ -21,7 +21,7 @@ class ModuleCollecteSenseurs(SenseurModuleConsumerAbstract):
         super().__init__(handler, etat_senseurspassifs, no_senseur)
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self.__uuid_senseurs = list()
-        self.__etat_courant_senseurs = dict()
+        self._etat_courant_senseurs = dict()
 
     async def appliquer_configuration(self, configuration_hub: dict):
         await super().appliquer_configuration(configuration_hub)
@@ -110,7 +110,7 @@ class ModuleCollecteSenseurs(SenseurModuleConsumerAbstract):
         uuid_senseur = message['uuid_senseur']
         senseurs = message['senseurs']
         self.__logger.info("ModuleAffichageLignes recu lecture %s = %s" % (uuid_senseur, senseurs))
-        self.__etat_courant_senseurs[uuid_senseur] = senseurs
+        self._etat_courant_senseurs[uuid_senseur] = message
 
 
 class ModuleAfficheLignes(ModuleCollecteSenseurs):
@@ -180,13 +180,6 @@ class ModuleAfficheLignes(ModuleCollecteSenseurs):
 
         return lignes
 
-    def _generer_page(self):
-        return [
-            'Ligne 1',
-            'Ligne 2',
-            'Ligne 3',
-        ]
-
     async def __afficher_heure(self):
         nb_secs = self.__delai_pages
         while nb_secs > 0:
@@ -208,3 +201,69 @@ class ModuleAfficheLignes(ModuleCollecteSenseurs):
                 await asyncio.sleep(1)
             except asyncio.TimeoutError:
                 pass
+
+    def _generer_page(self) -> list:
+        """
+        Genere toutes les lignes de donnees en utilisant le formattage demande
+        :return:
+        """
+        lignes = []
+
+        try:
+            instance_id = self._configuration_hub['instance_id']
+        except (TypeError, KeyError):
+            self.__logger.warning("Configuration de l'affichage %s n'est pas encore recue" % self._no_senseur)
+            return list()
+
+        try:
+            formattage = self._configuration_hub['lcd_affichage']
+            for ligne in formattage:
+                self.__logger.debug("Formatter ligne %s" % str(ligne))
+                lignes.append(self.formatter_ligne(instance_id, ligne))
+
+            return lignes
+        except KeyError:
+            return list()  # Aucune configuration
+
+    def formatter_ligne(self, noeud_id: str, formattage: dict):
+        format = formattage['affichage']
+
+        uuid_senseur = formattage.get('uuid')
+        cle_senseur = uuid_senseur
+
+        cle_appareil = formattage.get('appareil')
+
+        # Si on a un senseur/cle, on va chercher la valeur dans le cache de documents
+        if uuid_senseur is not None and uuid_senseur != '' and \
+                cle_appareil is not None and cle_appareil != '':
+
+            flag = ''
+            try:
+                doc_senseur = self._etat_courant_senseurs[cle_senseur]
+                doc_appareil = doc_senseur['senseurs'][cle_appareil]
+                try:
+                    ts_app = doc_appareil['timestamp']
+                    date_courante = datetime.datetime.utcnow()
+                    date_lecture = datetime.datetime.fromtimestamp(ts_app)
+                    exp_1 = datetime.timedelta(minutes=5)
+                    exp_2 = datetime.timedelta(minutes=30)
+                    if date_lecture + exp_2 < date_courante:
+                        flag = '!'
+                    elif date_lecture + exp_1 < date_courante:
+                        flag = '?'
+                except KeyError:
+                    pass
+                valeur = doc_appareil['valeur']
+            except KeyError:
+                # Noeud/senseur/appareil inconnu
+                self.__logger.warning("Noeud %s, senseur %s, appareil %s inconnu" % (noeud_id, uuid_senseur, cle_appareil))
+                return 'N/A'
+
+            try:
+                return format.format(valeur,) + flag
+            except KeyError:
+                return '!' + format
+
+        else:
+            # Formattage libre avec valeurs systeme
+            return format
