@@ -135,7 +135,9 @@ class ModuleAfficheLignes(ModuleCollecteSenseurs):
         await super().appliquer_configuration(configuration_hub)
 
         try:
-            if configuration_hub.get('lcd_actif') is True:
+            if configuration_hub is None:
+                await self.desactiver_affichage()
+            elif configuration_hub.get('lcd_actif') is True:
                 await self.activer_affichage()
             elif configuration_hub.get('lcd_actif') is False:
                 await self.desactiver_affichage()
