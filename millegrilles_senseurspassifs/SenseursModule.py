@@ -123,6 +123,10 @@ class SenseurModuleHandler:
         await self.__q_lectures.put(message_interne)
 
     async def transmettre_lecture(self, message: dict):
+        if self.producer is None:
+            self.__logger.debug("Producer n'est pas pret, lecture n'est pas transmise")
+            return
+
         event_producer = self.producer.producer_pret()
         await asyncio.wait_for(event_producer.wait(), 5)
 
