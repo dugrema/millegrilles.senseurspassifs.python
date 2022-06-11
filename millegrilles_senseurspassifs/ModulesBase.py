@@ -3,7 +3,7 @@ import logging
 
 from millegrilles_senseurspassifs.EtatSenseursPassifs import EtatSenseursPassifs
 from millegrilles_senseurspassifs.SenseursModule import SenseurModuleHandler
-from millegrilles_senseurspassifs.AffichagePassif import ModuleAffichageLignes
+from millegrilles_senseurspassifs.AffichagePassif import ModuleAfficheLignes
 
 
 class ModuleHandlerBase(SenseurModuleHandler):
@@ -17,5 +17,5 @@ class ModuleHandlerBase(SenseurModuleHandler):
 
         if args.affichagelog is True:
             self.__logger.info("Activer ModuleAffichageLignes")
-            self._modules_consumer.append(ModuleAffichageLignes(self, self._etat_senseurspassifs, 'affichagelignes'))
+            self._modules_consumer.append(ModuleAfficheLignes(self, self._etat_senseurspassifs, 'affichagelignes'))
 
