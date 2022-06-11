@@ -1,7 +1,11 @@
 import asyncio
 import logging
+import RPi.GPIO as GPIO
 
 from senseurspassifs_rpi.RF24Server import NRF24Server
+
+
+GPIO.setmode(GPIO.BCM)
 
 
 class RF24Test:
@@ -11,8 +15,10 @@ class RF24Test:
         self.rf24_server = NRF24Server('zeYncRqEqZ6eTEmUZ8whJFuHG796eSvCTWE4M432izXrp22bAtwGm7Jf', 'dev')
 
     async def run(self):
+        self.__logger.info("Debut run")
         self.rf24_server.set_callback_lecture(self.callback_lecture)
         await self.rf24_server.run()
+        self.__logger.info("Fin run")
 
     async def callback_lecture(self, message):
         self.__logger.info("callback_lecture: Message recu\n%s" % message)
@@ -24,6 +30,10 @@ async def test():
 
 
 def main():
+    logging.basicConfig()
+    logging.getLogger(__name__).setLevel(logging.DEBUG)
+    logging.getLogger('millegrilles_senseurspassifs').setLevel(logging.DEBUG)
+
     print("Demarrage test")
     asyncio.run(test())
     print("Main termine")
