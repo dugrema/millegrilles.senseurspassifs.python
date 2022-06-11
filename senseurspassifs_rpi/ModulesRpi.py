@@ -83,13 +83,18 @@ class SenseurDHT(SenseurModuleProducerAbstract):
         self._reader = ThermometreAdafruitGPIO(uuid_senseur=no_senseur, pin=pin)
 
     async def run(self):
-        try:
-            lecture = await self._reader.lire()
-            senseurs = lecture['senseurs']
+        while True:
+            try:
+                lecture = await self._reader.lire()
+                senseurs = lecture['senseurs']
 
-            # Transmettre lecture
-            await self.lecture(senseurs)
+                # Transmettre lecture
+                await self.lecture(senseurs)
+            except:
+                self.__logger.exception("Erreur traitement DHT")
+            finally:
+                try:
+                    await asyncio.sleep(10)
+                except asyncio.TimeoutError:
+                    pass
 
-            await asyncio.sleep(10)
-        except asyncio.TimeoutError:
-            pass
