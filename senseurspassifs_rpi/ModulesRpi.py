@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import logging
 
 from typing import Optional
 
@@ -14,6 +15,7 @@ class RpiModuleHandler(SenseurModuleHandler):
 
     def __init__(self, etat_senseurspassifs: EtatSenseursPassifs):
         super().__init__(etat_senseurspassifs)
+        self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
 
     async def preparer_modules(self, args: argparse.Namespace):
         await super().preparer_modules(args)
@@ -28,6 +30,7 @@ class AffichageLCD2Lignes(ModuleAfficheLignes):
 
     def __init__(self, handler: SenseurModuleHandler, etat_senseurspassifs: EtatSenseursPassifs, no_senseur: str):
         super().__init__(handler, etat_senseurspassifs, no_senseur)
+        self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self.__lcd_handler: Optional[LcdHandler] = None
         self._initialiser()
 
