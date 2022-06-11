@@ -15,21 +15,29 @@ class RF24Test:
     def __init__(self):
         self.__logger = logging.getLogger(__name__ + "." + self.__class__.__name__)
         self.rf24_server = NRF24Server('zeYncRqEqZ6eTEmUZ8whJFuHG796eSvCTWE4M432izXrp22bAtwGm7Jf', 'dev')
-        self.__loop: Optional[asyncio.events.AbstractEventLoop] = None
+        self.__queue_messages: Optional[asyncio.Queue] = None
 
     async def run(self):
-        self.__loop = asyncio.get_event_loop()
+        self.__queue_messages = asyncio.Queue(maxsize=50)
         self.__logger.info("Debut run")
         self.rf24_server.start(self.callback_lecture)
 
-        await asyncio.sleep(120)
+        tasks = [
+            asyncio.create_task(self.traiter_messages()),
+            asyncio.create_task(asyncio.sleep(120)),
+        ]
+
+        await asyncio.tasks.wait(tasks, return_when=asyncio.tasks.FIRST_COMPLETED)
+
         self.__logger.info("Fin run")
 
     def callback_lecture(self, message):
-        self.__loop.call_soon_threadsafe(self.callback_async, message)
+        self.__queue_messages.put_nowait(message)
 
-    async def callback_async(self, message):
-        self.__logger.info("callback_lecture: Message recu\n%s" % message)
+    async def traiter_messages(self):
+        while True:
+            message = await self.__queue_messages.get()
+            self.__logger.info("callback_lecture: Message recu\n%s" % message)
 
 
 async def test():
