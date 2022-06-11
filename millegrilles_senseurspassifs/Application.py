@@ -43,6 +43,7 @@ class ApplicationInstance:
         args = parser.parse_args()
         if args.verbose:
             self.__logger.setLevel(logging.DEBUG)
+            logging.getLogger('senseurspassifs_rpi').setLevel(logging.DEBUG)
 
         self.__logger.debug("args : %s" % args)
 
