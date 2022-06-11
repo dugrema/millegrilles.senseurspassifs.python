@@ -76,7 +76,7 @@ class AffichageLCD2Lignes(ModuleAfficheLignes):
 class SenseurDHT(SenseurModuleProducerAbstract):
 
     def __init__(self, handler: SenseurModuleHandler, etat_senseurspassifs: EtatSenseursPassifs, pin: int, lecture_callback):
-        instance_id = self._etat_senseurspassifs.instance_id
+        instance_id = etat_senseurspassifs.instance_id
         no_senseur = '%s_DHT' % instance_id
         super().__init__(handler, etat_senseurspassifs, no_senseur, lecture_callback)
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
