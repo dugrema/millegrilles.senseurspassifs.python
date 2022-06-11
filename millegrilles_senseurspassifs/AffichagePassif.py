@@ -167,7 +167,7 @@ class ModuleAfficheLignes(ModuleCollecteSenseurs):
         self._lignes_affichage = list()  # Clear affichage
 
     async def run_affichage(self):
-        while self.__event_page.is_set() is False:
+        while True:
             await self._event_affichage_actif.wait()  # Attendre que l'affichage soit active
 
             if self._event_affichage_actif.is_set():

@@ -62,6 +62,12 @@ class AffichageLCD2Lignes(ModuleAfficheLignes):
         :return:
         """
         self.__logger.info("Lignes a afficher pour la page:\n%s" % '\n'.join(page))
+        try:
+            await asyncio.to_thread(self.__afficher_page_thread, page)
+        except Exception:
+            self.__logger.exception("Erreur affichage page LCD")
+
+    def __afficher_page_thread(self, page: list):
         positions_lcd = [LcdHandler.LCD_LINE_1, LcdHandler.LCD_LINE_2]
         page_copy = page.copy()
         for position in positions_lcd:
