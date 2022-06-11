@@ -9,7 +9,7 @@ import pytz
 from typing import Optional
 
 from millegrilles_messages.messages import Constantes
-from millegrilles_messages.messages.MessagesModule import MessageWrapper, MessageProducerFormatteur
+from millegrilles_messages.messages.MessagesModule import MessageProducerFormatteur
 from millegrilles_senseurspassifs import Constantes as ConstantesSenseursPassifs
 from millegrilles_senseurspassifs.EtatSenseursPassifs import EtatSenseursPassifs
 from millegrilles_senseurspassifs.SenseursModule import SenseurModuleHandler, SenseurModuleConsumerAbstract

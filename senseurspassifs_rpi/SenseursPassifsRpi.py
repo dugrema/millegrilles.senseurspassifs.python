@@ -2,13 +2,13 @@ import asyncio
 import logging
 import signal
 
-from millegrilles_senseurspassifs.Application import ApplicationInstance
+from senseurspassifs_rpi.ApplicationRpi import ApplicationRpi
 
 
 async def initialiser_application():
     logging.basicConfig()
 
-    app = ApplicationInstance()
+    app = ApplicationRpi()
 
     args = app.parse()
     if args.verbose:
