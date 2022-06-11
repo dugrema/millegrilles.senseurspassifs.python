@@ -2,7 +2,9 @@
 Module d'affichage de lectures avec appareil.
 """
 import asyncio
+import datetime
 import logging
+import pytz
 
 from typing import Optional
 
@@ -143,16 +145,32 @@ class ModuleAfficheLignes(ModuleCollecteSenseurs):
     async def run_affichage(self):
         while self.__event_page.is_set() is False:
             page = self._get_page()
-            self.__logger.info("Lignes a afficher pour la page:\n%s" % '\n'.join(page))
+            if page is None:
+                # On est entre deux passes d'affichage, afficher l'heure
+                await self.__afficher_heure()
+                continue
+
+            await self._afficher_page(page)
 
             try:
                 await asyncio.wait_for(self.__event_page.wait(), self.__delai_pages)
             except asyncio.TimeoutError:
                 pass  # Prochaine page
 
-    def _get_page(self) -> list:
-        if len(self.__lignes_affichage) == 0:
-            self._generer_page()
+    async def _afficher_page(self, page: list):
+        """
+        Methode qui effectue l'affichage d'une page
+        :param page:
+        :return:
+        """
+        self.__logger.info("Lignes a afficher pour la page:\n%s" % '\n'.join(page))
+
+    def _get_page(self) -> Optional[list]:
+        if self.__lignes_affichage is None:
+            self.__lignes_affichage = self._generer_page()
+        elif len(self.__lignes_affichage) == 0:
+            self.__lignes_affichage = None
+            return None
 
         # Recuperer lignes
         lignes = self.__lignes_affichage[0:self.__lignes_par_page]
@@ -163,8 +181,30 @@ class ModuleAfficheLignes(ModuleCollecteSenseurs):
         return lignes
 
     def _generer_page(self):
-        self.__lignes_affichage = [
+        return [
             'Ligne 1',
             'Ligne 2',
             'Ligne 3',
         ]
+
+    async def __afficher_heure(self):
+        nb_secs = self.__delai_pages
+        while nb_secs > 0:
+            nb_secs -= 1
+
+            # Prendre heure courante, formatter
+            now = datetime.datetime.utcnow().astimezone(pytz.UTC)  # Set date a UTC
+            # if self._timezone_horloge is not None:
+            #     now = now.astimezone(self._timezone_horloge)  # Converti vers timezone demande
+            datestring = now.strftime('%Y-%m-%d')
+            timestring = now.strftime('%H:%M:%S')
+
+            lignes_affichage = [datestring, timestring]
+            logging.debug("Horloge: %s" % str(lignes_affichage))
+            await self._afficher_page(lignes_affichage)
+
+            # Attendre 1 seconde
+            try:
+                await asyncio.sleep(1)
+            except asyncio.TimeoutError:
+                pass
