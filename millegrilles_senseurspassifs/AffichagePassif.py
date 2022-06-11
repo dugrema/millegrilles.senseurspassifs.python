@@ -244,7 +244,7 @@ class ModuleAfficheLignes(ModuleCollecteSenseurs):
                 try:
                     ts_app = doc_appareil['timestamp']
                     date_courante = datetime.datetime.utcnow()
-                    date_lecture = datetime.datetime.fromtimestamp(ts_app)
+                    date_lecture = datetime.datetime.utcfromtimestamp(ts_app)
                     exp_1 = datetime.timedelta(minutes=5)
                     exp_2 = datetime.timedelta(minutes=30)
                     if date_lecture + exp_2 < date_courante:
