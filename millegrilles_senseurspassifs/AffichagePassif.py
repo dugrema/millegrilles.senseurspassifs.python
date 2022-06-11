@@ -124,11 +124,23 @@ class ModuleAfficheLignes(ModuleCollecteSenseurs):
         self.__lignes_par_page = 2
         self.__delai_pages = 5.0
         self.__event_page: Optional[asyncio.Event] = None
+        self.__event_affichage_actif: Optional[asyncio.Event] = None
 
         self.__lignes_affichage = list()
 
     def set_lignes_par_page(self, lignes: int):
         self.__lignes_par_page = lignes
+
+    async def appliquer_configuration(self, configuration_hub: dict):
+        await super().appliquer_configuration(configuration_hub)
+
+        try:
+            if configuration_hub['lcd_actif'] is True:
+                await self.activer_affichage()
+            elif configuration_hub['lcd_actif'] is False:
+                await self.desactiver_affichage()
+        except KeyError:
+            pass
 
     async def run(self):
         """
@@ -136,26 +148,39 @@ class ModuleAfficheLignes(ModuleCollecteSenseurs):
         :return:
         """
         self.__event_page = asyncio.Event()
+        self.__event_affichage_actif = asyncio.Event()
         tasks = [
             asyncio.create_task(super().run()),
             asyncio.create_task(self.run_affichage())
         ]
         await asyncio.tasks.wait(tasks, return_when=asyncio.tasks.FIRST_COMPLETED)
 
+    async def activer_affichage(self):
+        self.__logger.info("Activer affichage")
+        self.__event_affichage_actif.set()
+
+    async def desactiver_affichage(self):
+        self.__logger.info("Desactiver affichage")
+        self.__event_affichage_actif.clear()
+        self.__lignes_affichage = list()  # Clear affichage
+
     async def run_affichage(self):
         while self.__event_page.is_set() is False:
-            page = self._get_page()
-            if page is None:
-                # On est entre deux passes d'affichage, afficher l'heure
-                await self.__afficher_heure()
-                continue
+            await self.__event_affichage_actif.wait()  # Attendre que l'affichage soit active
 
-            await self._afficher_page(page)
+            if self.__event_affichage_actif.is_set():
+                page = self._get_page()
+                if page is None:
+                    # On est entre deux passes d'affichage, afficher l'heure
+                    await self.__afficher_heure()
+                    continue
 
-            try:
-                await asyncio.wait_for(self.__event_page.wait(), self.__delai_pages)
-            except asyncio.TimeoutError:
-                pass  # Prochaine page
+                await self._afficher_page(page)
+
+                try:
+                    await asyncio.wait_for(self.__event_page.wait(), self.__delai_pages)
+                except asyncio.TimeoutError:
+                    pass  # Prochaine page
 
     async def _afficher_page(self, page: list):
         """
