@@ -33,11 +33,11 @@ class SenseurModuleHandler:
 
         if args.dummysenseurs is True:
             self.__logger.info("Activer dummy senseurs")
-            self.__modules_producer.append(DummyProducer(self.__etat_senseurspassifs, 'dummy_1', self.traiter_lecture_interne))
+            self.__modules_producer.append(DummyProducer(self, self.__etat_senseurspassifs, 'dummy_1', self.traiter_lecture_interne))
 
         if args.dummylcd is True:
             self.__logger.info("Activer dummy LCD")
-            self.__modules_consumer.append(DummyConsumer(self.__etat_senseurspassifs, 'dummy_lcd'))
+            self.__modules_consumer.append(DummyConsumer(self, self.__etat_senseurspassifs, 'dummy_lcd'))
 
     async def reload_configuration(self):
         path_logs = self.__etat_senseurspassifs.configuration.lecture_log_directory
@@ -197,6 +197,7 @@ class SenseurModuleConsumerAbstract:
                 # Chargement initial de la configuration du hub
                 configuration_hub = await self.get_configuration_hub()
                 await self.appliquer_configuration(configuration_hub)
+                await self.rafraichir()
             try:
                 await asyncio.wait_for(self.__event_attente.wait(), 30)
             except TimeoutError:
@@ -207,7 +208,8 @@ class SenseurModuleConsumerAbstract:
         path_config = path.join(configuration.senseurspassifs_path, 'dummyconsumer.%s.json' % self._no_senseur)
         try:
             with open(path_config, 'r') as fichier:
-                self._configuration_hub = json.load(fichier)
+                await self.appliquer_configuration(json.load(fichier))
+                await self.rafraichir()
         except FileNotFoundError:
             self.__logger.debug("Fichier %s n'est pas preset" % path_config)
         except json.decoder.JSONDecodeError:
@@ -239,10 +241,13 @@ class SenseurModuleConsumerAbstract:
                 self.__logger.warning("get_configuration_hub Timeout producer - Echec requete configuration hub")
 
     async def traiter(self, message):
-        raise NotImplementedError('Not implemented')
+        raise NotImplementedError('Override')
 
     def routing_keys(self) -> list:
-        raise NotImplementedError("Override")
+        raise NotImplementedError('Override')
+
+    async def rafraichir(self):
+        raise NotImplementedError('Override')
 
 
 class DummyProducer(SenseurModuleProducerAbstract):
@@ -250,9 +255,10 @@ class DummyProducer(SenseurModuleProducerAbstract):
     Exemple de producer. Utilise --dummysenseur pour activer sur command line.
     """
 
-    def __init__(self, etat_senseurspassifs: EtatSenseursPassifs, no_senseur: str, lecture_callback):
+    def __init__(self, handler: SenseurModuleHandler, etat_senseurspassifs: EtatSenseursPassifs, no_senseur: str, lecture_callback):
         super().__init__(etat_senseurspassifs, no_senseur, lecture_callback)
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
+        self._handler = handler
 
     async def run(self):
         event_attente = Event()
@@ -291,9 +297,10 @@ class DummyConsumer(SenseurModuleConsumerAbstract):
     Exemple de consumer. Utilise --dummylcd pour activer sur command line.
     """
 
-    def __init__(self, etat_senseurspassifs, no_senseur: str):
+    def __init__(self, handler: SenseurModuleHandler, etat_senseurspassifs, no_senseur: str):
         super().__init__(etat_senseurspassifs, no_senseur)
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
+        self._handler = handler
 
         self.__uuid_senseurs = list()
 
@@ -351,3 +358,34 @@ class DummyConsumer(SenseurModuleConsumerAbstract):
                 pass
 
         return list(uuid_senseurs)
+
+    async def rafraichir(self):
+        producer: MessageProducerFormatteur = self._etat_senseurspassifs.producer
+        if producer is not None and len(self.__uuid_senseurs) > 0:
+            try:
+                await asyncio.wait_for(producer.producer_pret().wait(), 5)
+
+                requete_noeuds = {}
+                liste_noeuds_wrapper = await producer.executer_requete(
+                    requete_noeuds, ConstantesSenseursPassifs.DOMAINE_SENSEURSPASSIFS,
+                    ConstantesSenseursPassifs.REQUETE_LISTE_NOEUDS, Constantes.SECURITE_PRIVE)
+                liste_noeuds = liste_noeuds_wrapper.parsed['noeuds']
+                instance_ids = [u['instance_id'] for u in liste_noeuds]
+
+                for instance_id in instance_ids:
+                    requete = {'uuid_senseurs': self.__uuid_senseurs}
+                    senseurs_wrapper = await producer.executer_requete(
+                        requete, ConstantesSenseursPassifs.DOMAINE_SENSEURSPASSIFS,
+                        ConstantesSenseursPassifs.REQUETE_LISTE_SENSEURS_PAR_UUID, Constantes.SECURITE_PRIVE,
+                        partition=instance_id)
+                    senseurs = senseurs_wrapper.parsed['senseurs']
+                    for senseur in senseurs:
+                        # Emettre message senseur comme message interne
+                        uuid_senseur = senseur['uuid_senseur']
+                        lectures_senseurs = senseur['senseurs']
+                        await self._handler.traiter_lecture_interne(uuid_senseur, lectures_senseurs)
+
+                pass
+
+            except TimeoutError:
+                self.__logger.warning("get_configuration_hub Timeout producer - Echec requete configuration hub")
