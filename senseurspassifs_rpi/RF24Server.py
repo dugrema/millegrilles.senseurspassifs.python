@@ -37,7 +37,7 @@ from senseurspassifs_rpi.ProtocoleVersion9 import VERSION_PROTOCOLE, \
     AssembleurPaquets, Paquet0, PaquetDemandeDHCP, PaquetBeaconDHCP, PaquetReponseDHCP, TypesMessages
 
 
-class Constantes(ConstantesRPi):
+class Constantes:
     MG_CHANNEL_PROD = 0x5e
     MG_CHANNEL_INT = 0x24
     MG_CHANNEL_DEV = 0x0c
@@ -336,7 +336,7 @@ class NRF24Server:
         self.thread = None
 
         # Path et fichiers de configuration
-        path_configuration = environ.get('RF24_CONFIG_PATH') or Constantes.PATH_CONFIGURATION
+        path_configuration = environ.get('RF24_CONFIG_PATH') or ConstantesRPi.PATH_CONFIGURATION
         makedirs(path_configuration, exist_ok=True)
 
         self.__path_configuration_reseau = environ.get('RF24_RESEAU_CONF') or \
@@ -568,11 +568,11 @@ class NRF24Server:
     # Close all connections and the radio
     def fermer(self):
         self.__stop_event.set()
-        try:
-            self.__radio.stopListening()
-            self.__radio = None
-        except Exception as e:
-            self.__logger.warning("NRF24MeshServer: Error closing radio: %s" % str(e))
+        # try:
+        #     self.__radio.stopListening()
+        #     self.__radio = None
+        # except Exception as e:
+        #     self.__logger.warning("NRF24MeshServer: Error closing radio: %s" % str(e))
 
     def __ajouter_iv_appareil(self, info_appareil, iv):
         # info_appareil = self.__information_appareils_par_uuid.get(uuid_senseur)
