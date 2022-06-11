@@ -124,9 +124,9 @@ class ModuleAfficheLignes(ModuleCollecteSenseurs):
         self.__lignes_par_page = 2
         self.__delai_pages = 5.0
         self.__event_page: Optional[asyncio.Event] = None
-        self.__event_affichage_actif: Optional[asyncio.Event] = None
+        self._event_affichage_actif: Optional[asyncio.Event] = None
 
-        self.__lignes_affichage = list()
+        self._lignes_affichage = list()
 
     def set_lignes_par_page(self, lignes: int):
         self.__lignes_par_page = lignes
@@ -150,7 +150,7 @@ class ModuleAfficheLignes(ModuleCollecteSenseurs):
         :return:
         """
         self.__event_page = asyncio.Event()
-        self.__event_affichage_actif = asyncio.Event()
+        self._event_affichage_actif = asyncio.Event()
         tasks = [
             asyncio.create_task(super().run()),
             asyncio.create_task(self.run_affichage())
@@ -159,18 +159,18 @@ class ModuleAfficheLignes(ModuleCollecteSenseurs):
 
     async def activer_affichage(self):
         self.__logger.info("Activer affichage")
-        self.__event_affichage_actif.set()
+        self._event_affichage_actif.set()
 
     async def desactiver_affichage(self):
         self.__logger.info("Desactiver affichage")
-        self.__event_affichage_actif.clear()
-        self.__lignes_affichage = list()  # Clear affichage
+        self._event_affichage_actif.clear()
+        self._lignes_affichage = list()  # Clear affichage
 
     async def run_affichage(self):
         while self.__event_page.is_set() is False:
-            await self.__event_affichage_actif.wait()  # Attendre que l'affichage soit active
+            await self._event_affichage_actif.wait()  # Attendre que l'affichage soit active
 
-            if self.__event_affichage_actif.is_set():
+            if self._event_affichage_actif.is_set():
                 page = self._get_page()
                 if page is None:
                     # On est entre deux passes d'affichage, afficher l'heure
@@ -193,17 +193,17 @@ class ModuleAfficheLignes(ModuleCollecteSenseurs):
         self.__logger.info("Lignes a afficher pour la page:\n%s" % '\n'.join(page))
 
     def _get_page(self) -> Optional[list]:
-        if self.__lignes_affichage is None:
-            self.__lignes_affichage = self._generer_page()
-        elif len(self.__lignes_affichage) == 0:
-            self.__lignes_affichage = None
+        if self._lignes_affichage is None:
+            self._lignes_affichage = self._generer_page()
+        elif len(self._lignes_affichage) == 0:
+            self._lignes_affichage = None
             return None
 
         # Recuperer lignes
-        lignes = self.__lignes_affichage[0:self.__lignes_par_page]
+        lignes = self._lignes_affichage[0:self.__lignes_par_page]
 
         # Retirer lignes consommees
-        self.__lignes_affichage = self.__lignes_affichage[self.__lignes_par_page:]
+        self._lignes_affichage = self._lignes_affichage[self.__lignes_par_page:]
 
         return lignes
 

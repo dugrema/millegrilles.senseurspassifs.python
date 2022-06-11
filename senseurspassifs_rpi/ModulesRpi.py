@@ -52,8 +52,8 @@ class AffichageLCD2Lignes(ModuleAfficheLignes):
     async def desactiver_affichage(self):
         self.__logger.info("Desactiver affichage")
         await asyncio.to_thread(self.__lcd_handler.set_backlight, False)
-        self.__event_affichage_actif.clear()
-        self.__lignes_affichage = list()  # Clear affichage
+        self._event_affichage_actif.clear()
+        self._lignes_affichage = list()  # Clear affichage
 
     async def _afficher_page(self, page: list):
         """
