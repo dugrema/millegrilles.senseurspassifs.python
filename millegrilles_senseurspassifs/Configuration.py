@@ -22,6 +22,7 @@ class ConfigurationSenseursPassifs:
         self.cert_pem_path = '/var/opt/millegrilles/secrets_partages/pki.certificat_senseurspassifs_hub.cert'
         self.key_pem_path = '/var/opt/millegrilles/secrets_partages/pki.certificat_senseurspassifs_hub.cle'
 
+        self.senseurspassifs_path = '/var/opt/millegrilles/senseurspassifs'
         self.lecture_log_directory = '/var/opt/millegrilles/senseurspassifs/log'
 
         self.mq_host: Optional[str] = None

@@ -177,7 +177,7 @@ class SenseurModuleConsumerAbstract:
     Module de reception de lectures (e.g. affichage LCD)
     """
 
-    def __init__(self, etat_senseurspassifs, no_senseur: str):
+    def __init__(self, etat_senseurspassifs: EtatSenseursPassifs, no_senseur: str):
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self._etat_senseurspassifs = etat_senseurspassifs
         self._no_senseur = no_senseur
@@ -259,6 +259,7 @@ class DummyConsumer(SenseurModuleConsumerAbstract):
 
         self.__configuration_hub: Optional[dict] = None
         self.__event_attente: Optional[Event] = None
+        self.__uuid_senseurs = list()
 
     async def run(self):
         self.__event_attente = Event()
@@ -266,11 +267,24 @@ class DummyConsumer(SenseurModuleConsumerAbstract):
 
             if self.__configuration_hub is None:
                 # Chargement initial de la configuration du hub
-                self.__configuration_hub = await self.get_configuration_hub()
+                configuration_hub = await self.get_configuration_hub()
+                await self.appliquer_configuration(configuration_hub)
             try:
                 await asyncio.wait_for(self.__event_attente.wait(), 30)
             except TimeoutError:
                 pass
+
+    async def appliquer_configuration(self, configuration_hub: dict):
+        self.__configuration_hub = configuration_hub
+
+        # Maj liste de senseurs utilise par ce consumer
+        self.__uuid_senseurs = self.get_uuid_senseurs()
+
+        # Conserver sur disque
+        configuration = self._etat_senseurspassifs.configuration
+        path_config = path.join(configuration.senseurspassifs_path, 'dummyconsumer.%s.json' % self._no_senseur)
+        with open(path_config, 'w') as fichier:
+            json.dump(configuration_hub, fichier, indent=2)
 
     async def traiter(self, message):
         self.__logger.debug("DummyConsumer Traiter message %s" % message)
@@ -287,13 +301,12 @@ class DummyConsumer(SenseurModuleConsumerAbstract):
             return
 
         if action in ['lecture', 'lectureConfirmee']:
-            uuid_senseurs = self.get_uuid_senseurs()
-            if message_recu.get('uuid_senseur') in uuid_senseurs:
+            if message_recu.get('uuid_senseur') in self.__uuid_senseurs:
                 senseurs = message_recu['senseurs']
                 self.__logger.info("DummyConsumer recu lecture %s" % senseurs)
         elif action == 'majNoeud':
             self.__logger.debug("Remplacement configuration noeud avec %s" % message_recu)
-            self.__configuration_hub = message_recu
+            await self.appliquer_configuration(message_recu)
 
     def routing_keys(self) -> list:
         """
