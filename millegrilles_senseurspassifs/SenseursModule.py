@@ -277,14 +277,23 @@ class DummyConsumer(SenseurModuleConsumerAbstract):
         # Matcher message pour ce senseur
         if message.get('interne') is True:
             message_recu = message['message']
+            action = 'lecture'
         elif message.get('confirmation') is True:
-            message_recu = message['message'].parsed
+            message_wrapper = message['message']
+            routing_key = message_wrapper.routing_key
+            action = routing_key.split('.').pop()
+            message_recu = message_wrapper.parsed
         else:
             return
 
-        if message_recu.get('uuid_senseur') == 'dummy_1':
-            senseurs = message_recu['senseurs']
-            self.__logger.info("DummyConsumer recu lecture %s" % senseurs)
+        if action in ['lecture', 'lectureConfirmee']:
+            uuid_senseurs = self.get_uuid_senseurs()
+            if message_recu.get('uuid_senseur') in uuid_senseurs:
+                senseurs = message_recu['senseurs']
+                self.__logger.info("DummyConsumer recu lecture %s" % senseurs)
+        elif action == 'majNoeud':
+            self.__logger.debug("Remplacement configuration noeud avec %s" % message_recu)
+            self.__configuration_hub = message_recu
 
     def routing_keys(self) -> list:
         """
@@ -294,3 +303,21 @@ class DummyConsumer(SenseurModuleConsumerAbstract):
             'evenement.SenseursPassifs.lectureConfirmee',
             'evenement.SenseursPassifs.%s.majNoeud' % self._etat_senseurspassifs.instance_id,
         ]
+
+    def get_uuid_senseurs(self) -> list:
+        if self.__configuration_hub is None:
+            return list()
+
+        try:
+            lignes = self.__configuration_hub['lcd_affichage']
+        except KeyError:
+            return list()
+
+        uuid_senseurs = set()
+        for ligne in lignes:
+            try:
+                uuid_senseurs.add(ligne['uuid'])
+            except KeyError:
+                pass
+
+        return list(uuid_senseurs)
