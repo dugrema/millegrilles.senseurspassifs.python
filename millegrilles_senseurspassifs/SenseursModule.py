@@ -222,9 +222,6 @@ class SenseurModuleConsumerAbstract:
         with open(path_config, 'w') as fichier:
             json.dump(configuration_hub, fichier, indent=2)
 
-    def routing_keys(self) -> list:
-        raise NotImplementedError("Override")
-
     async def get_configuration_hub(self):
         producer: MessageProducerFormatteur = self._etat_senseurspassifs.producer
         if producer is not None:
@@ -241,8 +238,17 @@ class SenseurModuleConsumerAbstract:
             except TimeoutError:
                 self.__logger.warning("get_configuration_hub Timeout producer - Echec requete configuration hub")
 
+    async def traiter(self, message):
+        raise NotImplementedError('Not implemented')
+
+    def routing_keys(self) -> list:
+        raise NotImplementedError("Override")
+
 
 class DummyProducer(SenseurModuleProducerAbstract):
+    """
+    Exemple de producer. Utilise --dummysenseur pour activer sur command line.
+    """
 
     def __init__(self, etat_senseurspassifs: EtatSenseursPassifs, no_senseur: str, lecture_callback):
         super().__init__(etat_senseurspassifs, no_senseur, lecture_callback)
@@ -281,6 +287,9 @@ class DummyProducer(SenseurModuleProducerAbstract):
 
 
 class DummyConsumer(SenseurModuleConsumerAbstract):
+    """
+    Exemple de consumer. Utilise --dummylcd pour activer sur command line.
+    """
 
     def __init__(self, etat_senseurspassifs, no_senseur: str):
         super().__init__(etat_senseurspassifs, no_senseur)
