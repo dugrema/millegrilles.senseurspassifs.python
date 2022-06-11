@@ -90,10 +90,15 @@ class ModuleCollecteSenseurs(SenseurModuleConsumerAbstract):
 
                 for instance_id in instance_ids:
                     requete = {'uuid_senseurs': self.__uuid_senseurs}
-                    senseurs_wrapper = await producer.executer_requete(
-                        requete, ConstantesSenseursPassifs.DOMAINE_SENSEURSPASSIFS,
-                        ConstantesSenseursPassifs.REQUETE_LISTE_SENSEURS_PAR_UUID, Constantes.SECURITE_PRIVE,
-                        partition=instance_id)
+                    try:
+                        senseurs_wrapper = await producer.executer_requete(
+                            requete, ConstantesSenseursPassifs.DOMAINE_SENSEURSPASSIFS,
+                            ConstantesSenseursPassifs.REQUETE_LISTE_SENSEURS_PAR_UUID, Constantes.SECURITE_PRIVE,
+                            partition=instance_id)
+                    except TimeoutError:
+                        self.__logger.warning("WARN Echec requete pour charger senseur %s (instance_id %s)" % (self.__uuid_senseurs, instance_id))
+                        continue
+
                     senseurs = senseurs_wrapper.parsed['senseurs']
                     for senseur in senseurs:
                         # Emettre message senseur comme message interne
@@ -105,6 +110,8 @@ class ModuleCollecteSenseurs(SenseurModuleConsumerAbstract):
 
             except TimeoutError:
                 self.__logger.warning("rafraichir Timeout producer - Echec requete configuration hub")
+            except Exception:
+                self.__logger.exception("rafraichir Erreur traitement")
 
     async def maj_etat_interne(self, message: dict):
         uuid_senseur = message['uuid_senseur']
