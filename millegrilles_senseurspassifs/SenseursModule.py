@@ -18,12 +18,12 @@ from millegrilles_senseurspassifs import Constantes as ConstantesSenseursPassifs
 
 class SenseurModuleHandler:
 
-    def __init__(self, etat_senseurspassifs):
+    def __init__(self, etat_senseurspassifs: EtatSenseursPassifs):
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
-        self.__etat_senseurspassifs = etat_senseurspassifs
+        self._etat_senseurspassifs = etat_senseurspassifs
 
-        self.__modules_consumer = list()
-        self.__modules_producer = list()
+        self._modules_consumer = list()
+        self._modules_producer = list()
 
         self.__sink_fichier: Optional[io.TextIOBase] = None
         self.__q_lectures: Optional[asyncio.queues.Queue] = None
@@ -33,14 +33,14 @@ class SenseurModuleHandler:
 
         if args.dummysenseurs is True:
             self.__logger.info("Activer dummy senseurs")
-            self.__modules_producer.append(DummyProducer(self, self.__etat_senseurspassifs, 'dummy_1', self.traiter_lecture_interne))
+            self._modules_producer.append(DummyProducer(self, self._etat_senseurspassifs, 'dummy_1', self.traiter_lecture_interne))
 
         if args.dummylcd is True:
             self.__logger.info("Activer dummy LCD")
-            self.__modules_consumer.append(DummyConsumer(self, self.__etat_senseurspassifs, 'dummy_lcd'))
+            self._modules_consumer.append(DummyConsumer(self, self._etat_senseurspassifs, 'dummy_lcd'))
 
     async def reload_configuration(self):
-        path_logs = self.__etat_senseurspassifs.configuration.lecture_log_directory
+        path_logs = self._etat_senseurspassifs.configuration.lecture_log_directory
         makedirs(path_logs, exist_ok=True)
 
         path_fichier_log = path.join(path_logs, 'senseurs.jsonl')
@@ -56,13 +56,13 @@ class SenseurModuleHandler:
             asyncio.create_task(self.traitement_lectures())
         ]
 
-        if len(self.__modules_consumer) == 0 and len(self.__modules_producer) == 0:
+        if len(self._modules_consumer) == 0 and len(self._modules_producer) == 0:
             raise ValueError('Aucuns modules configure')
 
-        for module in self.__modules_consumer:
+        for module in self._modules_consumer:
             tasks.append(asyncio.create_task(module.run()))
 
-        for module in self.__modules_producer:
+        for module in self._modules_producer:
             tasks.append(asyncio.create_task(module.run()))
 
         # Execution de la loop avec toutes les tasks
@@ -90,7 +90,7 @@ class SenseurModuleHandler:
             elif message.get('confirmation') is True:
                 pass  # Rien a faire
 
-            for consumer in self.__modules_consumer:
+            for consumer in self._modules_consumer:
                 await consumer.traiter(message)
 
     async def recevoir_confirmation_lecture(self, message: MessageWrapper):
@@ -113,7 +113,7 @@ class SenseurModuleHandler:
         message_interne = {
             'interne': True,
             'message': {
-                'instance_id': self.__etat_senseurspassifs.instance_id,
+                'instance_id': self._etat_senseurspassifs.instance_id,
                 'uuid_senseur': no_senseur,
                 'senseurs': lectures_senseurs,
             }
@@ -126,7 +126,7 @@ class SenseurModuleHandler:
         event_producer = self.producer.producer_pret()
         await asyncio.wait_for(event_producer.wait(), 5)
 
-        partition = self.__etat_senseurspassifs.partition
+        partition = self._etat_senseurspassifs.partition
 
         await self.producer.emettre_evenement(message, ConstantesSenseursPassifs.DOMAINE_SENSEURSPASSIFS,
                                               ConstantesSenseursPassifs.EVENEMENT_DOMAINE_LECTURE,
@@ -134,12 +134,12 @@ class SenseurModuleHandler:
 
     @property
     def producer(self):
-        return self.__etat_senseurspassifs.producer
+        return self._etat_senseurspassifs.producer
 
     def get_routing_key_consumers(self) -> list:
         # Creer liste de routing keys (dedupe avec set)
         routing_keys = set()
-        for consumer in self.__modules_consumer:
+        for consumer in self._modules_consumer:
             routing_keys.update(consumer.routing_keys())
 
         return list(routing_keys)
