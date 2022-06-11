@@ -37,6 +37,7 @@ class AffichageLCD2Lignes(ModuleAfficheLignes):
     def _initialiser(self):
         self.__lcd_handler = LcdHandler()
         self.__lcd_handler.initialise()
+        self.__lcd_handler.set_backlight(False)
 
     async def activer_affichage(self):
         self.__logger.info("Activer affichage")
