@@ -6,7 +6,8 @@ import datetime
 
 # from mgdomaines.appareils.AffichagesPassifs import AffichageAvecConfiguration
 
-import smbus  # Installer sur RPi (bus TWI)
+#import smbus  # Installer sur RPi (bus TWI)
+import smbus2 as smbus
 
 
 class LcdHandler:
