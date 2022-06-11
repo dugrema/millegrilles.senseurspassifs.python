@@ -14,13 +14,12 @@ Parametres configurables :
     - FICHIER_RESEAU_CONF : Path du fichier de configuraiton de reseau RF24.
                             Par defaut /var/opt/millegrilles/data/senseurspassifs.reseau.conf
 """
-import asyncio
 import RF24
 import donna25519
 import RPi.GPIO as GPIO
 
-from threading import Event, Lock
-from os import path, urandom, environ, makedirs
+from threading import Thread, Event, Lock
+from os import path, urandom, environ
 from zlib import crc32
 from struct import unpack
 
@@ -37,7 +36,7 @@ from senseurspassifs_rpi.ProtocoleVersion9 import VERSION_PROTOCOLE, \
     AssembleurPaquets, Paquet0, PaquetDemandeDHCP, PaquetBeaconDHCP, PaquetReponseDHCP, TypesMessages
 
 
-class Constantes:
+class Constantes(ConstantesRPi):
     MG_CHANNEL_PROD = 0x5e
     MG_CHANNEL_INT = 0x24
     MG_CHANNEL_DEV = 0x0c
@@ -53,40 +52,40 @@ class Constantes:
     PIN_IRQ = 24
     BCM2835_SPI_CS0 = 0
     BCM2835_SPI_SPEED_8MHZ = 8000000
-    
+
     FICHIER_CONFIG_RESEAU = 'senseurspassifs.reseau.conf'
     FICHIER_CONFIG_DHCP = 'senseurspassifs.dhcp.json'
 
 
 class RadioThread:
     """
-    Thread pour la radio. 
+    Thread pour la radio.
     Agit comme iter sur les messages recu.
     """
 
-    def __init__(self, stop_event: asyncio.Event, type_env='prod'):
+    def __init__(self, stop_event: Event, type_env='prod'):
         """
         Environnements
         :param stop_event: IDMG de la MilleGrille
         :param type_env: prod, int ou dev
         """
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
-        
+
         # Event pour indiquer a la thread de processing qu'on a un message
-        self.__event_reception = asyncio.Event()
+        self.__event_reception = Event()
         self.__stop_event = stop_event
 
         self.__fifo_payload = list()   # FIFO traitement messages
         self.__fifo_transmit = list()  # FIFO d'evenements a transmettre
-        
-        self.__event_action = asyncio.Event()
+
+        self.__event_action = Event()
         self.__lock_radio = Lock()
         self.__lock_reception = Lock()
-        # self.__thread = None
+        self.__thread = None
 
         self.__radio_PA_level = int(environ.get('RF24_PA') or RF24.RF24_PA_MIN)
         self.__logger.info("Radio PA level : %d" % self.__radio_PA_level)
-        
+
         self.__radio_pin = int(environ.get('RF24_RADIO_PIN') or Constantes.RPI_V2_GPIO_P1_22)
         self.__radio_irq = int(environ.get('RF24_RADIO_IRQ') or 24)
 
@@ -101,33 +100,27 @@ class RadioThread:
 
         self.irq_gpio_pin = None
         self.__radio = None
-        self.__event_reception = asyncio.Event()
+        self.__event_reception = Event()
 
         self.__information_appareils_par_uuid = dict()
 
         self.__intervalle_beacon = datetime.timedelta(seconds=Constantes.INTERVALLE_BEACON)
         self.__prochain_beacon = datetime.datetime.utcnow()
-        
+
         self.__message_beacon = None
 
-    # def start(self):
-    #     self.open_radio()
-    #     self.thread = Thread(name="RF24Radio", target=self.run, daemon=True)
-    #     self.thread.start()
-
-    async def run(self):
+    def start(self):
         self.open_radio()
+        self.thread = Thread(name="RF24Radio", target=self.run, daemon=True)
+        self.thread.start()
 
+    def run(self):
         self.__logger.info("RF24Radio: thread started successfully")
-
         try:
             while not self.__stop_event.is_set():
-                await asyncio.to_thread(self.__transmettre_beacon)
-                await asyncio.to_thread(self.__transmettre_paquets)
-                try:
-                    await asyncio.wait_for(self.__event_action.wait(), 0.25)
-                except asyncio.TimeoutError:
-                    pass
+                self.__transmettre_beacon()
+                self.__transmettre_paquets()
+                self.__event_action.wait(0.25)
         finally:
             self.__logger.info("Arret de la radio")
             try:
@@ -143,24 +136,22 @@ class RadioThread:
                 self.__fifo_payload.append(message)
         else:
             self.__logger.warning("FIFO reception message plein, message perdu")
-        
+
         self.__event_reception.set()
-    
+
     def transmettre(self, paquet: ProtocoleVersion9.PaquetTransmission):
         self.__fifo_transmit.append(paquet)
         self.__event_action.set()
-        
+
     def __transmettre_paquets(self):
         # Clear flag de transmission
         self.__event_action.clear()
 
-        event_attente = Event()
-
         while len(self.__fifo_transmit) > 0:
-            event_attente.wait(0.05)  # Throttling, wait 50ms to receive data
+            self.__stop_event.wait(0.05)  # Throttling, wait 50ms to receive data
 
             paquet = self.__fifo_transmit.pop(0)
-            
+
             # Determiner adresse de transmission
             node_id = paquet.node_id
             if node_id is None or isinstance(paquet, ProtocoleVersion9.PaquetReponseDHCP):
@@ -170,7 +161,7 @@ class RadioThread:
                 adresse = bytes([node_id]) + self.__adresse_reseau
 
             adresse_str = str(binascii.hexlify(adresse))
-                
+
             # reponse = True
             try:
                 self.__radio.openWritingPipe(adresse)
@@ -178,7 +169,7 @@ class RadioThread:
                 # if not reponse:
                 #     self.__logger.error("Erreur transmission vers : %s" % binascii.hexlify(adresse))
                 #     break
-                
+
                 message = paquet.encoder()
                 self.__logger.debug("Transmission paquet nodeId:%d, adresse:%s\n%s" % (
                     paquet.node_id, adresse_str, binascii.hexlify(message).decode('utf8')))
@@ -197,7 +188,7 @@ class RadioThread:
 
                 if not reponse:
                     self.__logger.debug("Transmission paquet ECHEC (node_id: %s, adresse: %s)" % (node_id, adresse_str))
-                            
+
             except Exception:
                 self.__logger.exception("Erreur tranmission message vers %s" % adresse_str)
             finally:
@@ -226,7 +217,7 @@ class RadioThread:
         # print("Radio details")
         # print( self.__radio.printDetails() )
         # print("Fin radio details")
-        
+
         self.__logger.info("Radio ouverte")
 
         # Connecter IRQ pour reception paquets
@@ -234,7 +225,7 @@ class RadioThread:
         self.__radio.maskIRQ(True, True, False)
         GPIO.setup(Constantes.PIN_IRQ, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         GPIO.add_event_detect(self.__radio_irq, GPIO.FALLING, callback=self.__process_network_messages)
-    
+
     def __transmettre_beacon(self):
         if datetime.datetime.utcnow() > self.__prochain_beacon:
             # self.__logger.debug("Beacon")
@@ -246,7 +237,7 @@ class RadioThread:
                 self.__radio.write(self.__message_beacon, True)
             finally:
                 self.__radio.startListening()
-    
+
     def __process_network_messages(self, channel):
         if channel is not None and self.__logger.isEnabledFor(logging.DEBUG):
             self.__logger.debug("Message sur channel %d" % channel)
@@ -258,12 +249,12 @@ class RadioThread:
                     self.recevoir(payload)
                 except Exception as e:
                     self.__logger.exception("NRF24MeshServer: Error processing radio message")
-    
+
     def __formatAdresse(self, adresse: bytes):
         adresse_paddee = adresse + bytes(8-len(adresse))
         adresse_no = struct.unpack('Q', adresse_paddee)[0]
         return adresse_no
-        
+
     def set_adresse_serveur(self, adresse_serveur):
         self.__logger.info("Adresse serveur : %s" % binascii.hexlify(adresse_serveur).decode('utf-8'))
         self.__adresse_serveur = adresse_serveur
@@ -273,11 +264,11 @@ class RadioThread:
     def set_adresse_reseau(self, adresse_reseau):
         self.__logger.info("Adresse reseau : %s" % binascii.hexlify(adresse_reseau).decode('utf-8'))
         self.__adresse_reseau = adresse_reseau
-        
+
     @property
     def adresse_reseau(self):
         return self.__adresse_reseau
-    
+
     def __iter__(self):
         return self
 
@@ -316,7 +307,7 @@ class NRF24Server:
         self.__idmg = idmg
         self.__type_env = type_env
 
-        self.__stop_event = asyncio.Event()
+        self.__stop_event = Event()
         self.reception_par_nodeId = dict()
         self.__assembleur_par_nodeId = dict()
 
@@ -336,17 +327,16 @@ class NRF24Server:
         self.thread = None
 
         # Path et fichiers de configuration
-        path_configuration = environ.get('RF24_CONFIG_PATH') or ConstantesRPi.PATH_CONFIGURATION
-        makedirs(path_configuration, exist_ok=True)
+        path_configuration = environ.get('RF24_CONFIG_PATH') or Constantes.PATH_CONFIGURATION
 
         self.__path_configuration_reseau = environ.get('RF24_RESEAU_CONF') or \
             path.join(path_configuration, Constantes.FICHIER_CONFIG_RESEAU)
         self.__configuration = None
-        
+
         path_configuration_dhcp = environ.get('RF24_DHCP_CONF') or \
             path.join(path_configuration, Constantes.FICHIER_CONFIG_DHCP)
         self.__reserve_dhcp = ReserveDHCP(path_configuration_dhcp)
-        
+
         self.__information_appareils_par_uuid = dict()
 
         self.__traitement_radio = RadioThread(self.__stop_event, type_env)
@@ -355,9 +345,6 @@ class NRF24Server:
         self.__adresse_serveur = None
 
         self.initialiser_configuration()
-
-    def set_callback_lecture(self, callback):
-        self._callback_soumettre = callback
 
     def initialiser_configuration(self):
         # Charger les fichiers de configuration
@@ -373,7 +360,7 @@ class NRF24Server:
             self.__logger.info("Charge configuration:\n%s" % json.dumps(self.__configuration, indent=4))
 
             adresses = self.__configuration['adresses']
-            
+
             adresse_serveur = binascii.unhexlify(adresses['serveur'].encode('utf8'))
             adresse_reseau = binascii.unhexlify(adresses['reseau'].encode('utf8'))
             cle_privee_bytes = binascii.unhexlify(self.__configuration['cle_privee'].encode('utf8'))
@@ -384,9 +371,9 @@ class NRF24Server:
 
             adresse_serveur = urandom(3)  # Generer 3 bytes pour l'adresse serveur receiving pipe
             adresse_reseau = urandom(4)   # Generer 4 bytes pour l'adresse du reseau
-            
+
             self.__cle_privee = donna25519.PrivateKey()
-            
+
             configuration = {
                 'adresses': {
                     'serveur': binascii.hexlify(adresse_serveur).decode('utf8'),
@@ -402,46 +389,36 @@ class NRF24Server:
         self.__traitement_radio.set_adresse_serveur(adresse_serveur)
         self.__traitement_radio.set_adresse_reseau(adresse_reseau)
 
-    # # Starts thread and runs the process
-    # def start(self, callback_soumettre):
-    #     self.__traitement_radio.start()
-    #     self._callback_soumettre = callback_soumettre
-    #     self.thread = Thread(name="RF24Server", target=self.run, daemon=True)
-    #     self.thread.start()
+    # Starts thread and runs the process
+    def start(self, callback_soumettre):
+        self.__traitement_radio.start()
+        self._callback_soumettre = callback_soumettre
+        self.thread = Thread(name="RF24Server", target=self.run, daemon=True)
+        self.thread.start()
 
-    async def __process_paquets(self):
+    def __process_paquets(self):
         for payload in self.__traitement_radio:
             self.__logger.debug("Payload %s bytes\n%s" % (len(payload), binascii.hexlify(payload).decode('utf-8')))
-            await asyncio.to_thread(self.process_paquet_payload, payload)
-                
-    async def __executer_cycle(self):
-        # Traiter paquets dans FIFO
-        await self.__process_paquets()
+            self.process_paquet_payload(payload)
 
-    async def run(self):
+    def __executer_cycle(self):
+        # Traiter paquets dans FIFO
+        self.__process_paquets()
+
+    def run(self):
         self.__logger.info("RF24Server: thread started successfully")
 
-        # self.__traitement_radio.start()
-        # self._callback_soumettre = callback_soumettre
-        #
-        # # Boucle principale d'execution
-        # while not self.__stop_event.is_set():
-        #     try:
-        #         self.__executer_cycle()
-        #         # Throttle le service
-        #         self.__traitement_radio.wait_reception(2.0)
-        #     except Exception as e:
-        #         self.__logger.exception("NRF24Server: Error processing update ou DHCP")
-        #         self.__stop_event.wait(5)  # Attendre 5 secondes avant de poursuivre
+        # Boucle principale d'execution
+        while not self.__stop_event.is_set():
+            try:
+                self.__executer_cycle()
+                # Throttle le service
+                self.__traitement_radio.wait_reception(2.0)
+            except Exception as e:
+                self.__logger.exception("NRF24Server: Error processing update ou DHCP")
+                self.__stop_event.wait(5)  # Attendre 5 secondes avant de poursuivre
 
-        tasks = [
-            asyncio.create_task(self.__traitement_radio.run()),
-            asyncio.create_task(self.__executer_cycle()),
-        ]
-
-        await asyncio.tasks.wait(tasks, return_when=asyncio.tasks.FIRST_COMPLETED)
-
-        self.__logger.info("RF24Server: Fin Run Thread RF24Server")
+        self.__logger.debug("Fin Run Thread RF24Server")
 
     def process_dhcp_request(self, payload):
         paquet = PaquetDemandeDHCP(payload)
@@ -457,7 +434,7 @@ class NRF24Server:
         self.__logger.debug("Paquet 0 recu")
         paquet0 = Paquet0(payload)
         self.__logger.debug("Paquet 0 info : %s, %s" % (paquet0.from_node, paquet0.is_multi_paquets()))
-        
+
         if paquet0.is_multi_paquets():
             self.__logger.debug("Paquet 0 - multi paquets")
             uuid_senseur = binascii.hexlify(paquet0.uuid).decode('utf-8')
@@ -477,11 +454,11 @@ class NRF24Server:
                 self.__logger.warning("Erreur lecture paquet0 node id:%s, probablement iv manquant: %s" % (paquet0.from_node, str(ke)))
 
     def process_paquet_payload(self, payload):
-        
+
         # Extraire premier bytes pour routing / traitement
         # Noter que pour les paquets cryptes, type_paquet n'est pas utilisable
         version, from_node_id, no_paquet, type_paquet = struct.unpack('BBHH', payload[0:6])
-        
+
         if version == VERSION_PROTOCOLE:
             self.__logger.debug("Node Id: %d Type paquet: %d, no: %d" % (from_node_id, type_paquet, no_paquet))
 
@@ -513,10 +490,10 @@ class NRF24Server:
     def _assembler_message(self, assembleur):
         self.__logger.debug("Assembler message")
         node_id = assembleur.node_id
-        
+
         # Recuperer information appareil, utilise pour messages a 1 paquet
         info_appareil = self.get_infoappareil_par_nodeid(node_id)
-        
+
         message, paquet_ack = assembleur.assembler(info_appareil)
         # message_json = json.dumps(message, indent=2)
         # self.__logger.debug("Message complet: \n%s" % message_json)

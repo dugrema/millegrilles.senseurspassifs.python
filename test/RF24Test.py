@@ -2,6 +2,8 @@ import asyncio
 import logging
 import RPi.GPIO as GPIO
 
+from typing import Optional
+
 from senseurspassifs_rpi.RF24Server import NRF24Server
 
 
@@ -13,20 +15,26 @@ class RF24Test:
     def __init__(self):
         self.__logger = logging.getLogger(__name__ + "." + self.__class__.__name__)
         self.rf24_server = NRF24Server('zeYncRqEqZ6eTEmUZ8whJFuHG796eSvCTWE4M432izXrp22bAtwGm7Jf', 'dev')
+        self.__loop: Optional[asyncio.events.AbstractEventLoop] = None
 
     async def run(self):
+        self.__loop = asyncio.get_event_loop()
         self.__logger.info("Debut run")
-        self.rf24_server.set_callback_lecture(self.callback_lecture)
-        await self.rf24_server.run()
+        self.rf24_server.start(self.callback_lecture)
+
+        await asyncio.sleep(120)
         self.__logger.info("Fin run")
 
-    async def callback_lecture(self, message):
+    def callback_lecture(self, message):
+        self.__loop.call_soon_threadsafe(self.callback_async, message)
+
+    async def callback_async(self, message):
         self.__logger.info("callback_lecture: Message recu\n%s" % message)
 
 
 async def test():
     test = RF24Test()
-    await asyncio.wait_for(test.run(), 120)
+    await test.run()
 
 
 def main():
