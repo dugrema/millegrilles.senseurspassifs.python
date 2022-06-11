@@ -181,17 +181,46 @@ class SenseurModuleConsumerAbstract:
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self._etat_senseurspassifs = etat_senseurspassifs
         self._no_senseur = no_senseur
+        self._configuration_hub: Optional[dict] = None
+
+        self.__event_attente: Optional[Event] = None
 
     async def run(self):
-        """
-        Override pour executer une task d'entretien
-        :return:
-        """
-        # Note : placeholder, aucun effet (wait forever) - override si necessaire
-        await Event().wait()
+        self.__event_attente = Event()
 
-    async def traiter(self, message):
-        raise NotImplementedError("Override")
+        # Chargement initial de configuration
+        await self.charger_configuration()
+
+        while self.__event_attente.is_set() is False:
+
+            if self._configuration_hub is None:
+                # Chargement initial de la configuration du hub
+                configuration_hub = await self.get_configuration_hub()
+                await self.appliquer_configuration(configuration_hub)
+            try:
+                await asyncio.wait_for(self.__event_attente.wait(), 30)
+            except TimeoutError:
+                pass
+
+    async def charger_configuration(self):
+        configuration = self._etat_senseurspassifs.configuration
+        path_config = path.join(configuration.senseurspassifs_path, 'dummyconsumer.%s.json' % self._no_senseur)
+        try:
+            with open(path_config, 'r') as fichier:
+                self._configuration_hub = json.load(fichier)
+        except FileNotFoundError:
+            self.__logger.debug("Fichier %s n'est pas preset" % path_config)
+        except json.decoder.JSONDecodeError:
+            self.__logger.debug("Fichier %s est corrompu" % path_config)
+
+    async def appliquer_configuration(self, configuration_hub: dict):
+        self._configuration_hub = configuration_hub
+
+        # Conserver sur disque
+        configuration = self._etat_senseurspassifs.configuration
+        path_config = path.join(configuration.senseurspassifs_path, 'dummyconsumer.%s.json' % self._no_senseur)
+        with open(path_config, 'w') as fichier:
+            json.dump(configuration_hub, fichier, indent=2)
 
     def routing_keys(self) -> list:
         raise NotImplementedError("Override")
@@ -257,34 +286,13 @@ class DummyConsumer(SenseurModuleConsumerAbstract):
         super().__init__(etat_senseurspassifs, no_senseur)
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
 
-        self.__configuration_hub: Optional[dict] = None
-        self.__event_attente: Optional[Event] = None
         self.__uuid_senseurs = list()
 
-    async def run(self):
-        self.__event_attente = Event()
-        while self.__event_attente.is_set() is False:
-
-            if self.__configuration_hub is None:
-                # Chargement initial de la configuration du hub
-                configuration_hub = await self.get_configuration_hub()
-                await self.appliquer_configuration(configuration_hub)
-            try:
-                await asyncio.wait_for(self.__event_attente.wait(), 30)
-            except TimeoutError:
-                pass
-
     async def appliquer_configuration(self, configuration_hub: dict):
-        self.__configuration_hub = configuration_hub
+        await super().appliquer_configuration(configuration_hub)
 
         # Maj liste de senseurs utilise par ce consumer
         self.__uuid_senseurs = self.get_uuid_senseurs()
-
-        # Conserver sur disque
-        configuration = self._etat_senseurspassifs.configuration
-        path_config = path.join(configuration.senseurspassifs_path, 'dummyconsumer.%s.json' % self._no_senseur)
-        with open(path_config, 'w') as fichier:
-            json.dump(configuration_hub, fichier, indent=2)
 
     async def traiter(self, message):
         self.__logger.debug("DummyConsumer Traiter message %s" % message)
@@ -318,11 +326,11 @@ class DummyConsumer(SenseurModuleConsumerAbstract):
         ]
 
     def get_uuid_senseurs(self) -> list:
-        if self.__configuration_hub is None:
+        if self._configuration_hub is None:
             return list()
 
         try:
-            lignes = self.__configuration_hub['lcd_affichage']
+            lignes = self._configuration_hub['lcd_affichage']
         except KeyError:
             return list()
 
