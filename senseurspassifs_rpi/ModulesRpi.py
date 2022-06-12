@@ -8,10 +8,6 @@ from millegrilles_senseurspassifs.AffichagePassif import ModuleAfficheLignes
 from millegrilles_senseurspassifs.EtatSenseursPassifs import EtatSenseursPassifs
 from millegrilles_senseurspassifs.SenseursModule import SenseurModuleHandler, SenseurModuleProducerAbstract
 
-from senseurspassifs_rpi.RPiTWI import LcdHandler
-from senseurspassifs_rpi.AdafruitDHT import ThermometreAdafruitGPIO
-from senseurspassifs_rpi.RF24Server import NRF24Server
-
 
 class RpiModuleHandler(SenseurModuleHandler):
 
@@ -32,7 +28,7 @@ class RpiModuleHandler(SenseurModuleHandler):
             senseur_dht = SenseurDHT(self, self._etat_senseurspassifs, pin, self.traiter_lecture_interne)
             self._modules_producer.append(senseur_dht)
 
-        if args.rf24hub is not None:
+        if args.rf24hub is True:
             env_rf24 = args.rf24env
             rf24_hub = SenseurRF24(self, self._etat_senseurspassifs, self.traiter_lecture_interne, env_rf24)
             self._modules_producer.append(rf24_hub)
@@ -42,11 +38,15 @@ class AffichageLCD2Lignes(ModuleAfficheLignes):
 
     def __init__(self, handler: SenseurModuleHandler, etat_senseurspassifs: EtatSenseursPassifs, no_senseur: str):
         super().__init__(handler, etat_senseurspassifs, no_senseur)
+
+        from senseurspassifs_rpi.RPiTWI import LcdHandler
+
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self.__lcd_handler: Optional[LcdHandler] = None
         self._initialiser()
 
     def _initialiser(self):
+        from senseurspassifs_rpi.RPiTWI import LcdHandler
         self.__lcd_handler = LcdHandler()
         self.__lcd_handler.initialise()
         self.__lcd_handler.set_backlight(False)
@@ -77,6 +77,7 @@ class AffichageLCD2Lignes(ModuleAfficheLignes):
             self.__logger.exception("Erreur affichage page LCD")
 
     def __afficher_page_thread(self, page: list):
+        from senseurspassifs_rpi.RPiTWI import LcdHandler
         positions_lcd = [LcdHandler.LCD_LINE_1, LcdHandler.LCD_LINE_2]
         page_copy = page.copy()
         for position in positions_lcd:
@@ -95,6 +96,8 @@ class SenseurDHT(SenseurModuleProducerAbstract):
         no_senseur = '%s_DHT' % instance_id
         super().__init__(handler, etat_senseurspassifs, no_senseur, lecture_callback)
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
+
+        from senseurspassifs_rpi.AdafruitDHT import ThermometreAdafruitGPIO
         self._reader = ThermometreAdafruitGPIO(uuid_senseur=no_senseur, pin=pin)
 
     async def run(self):
@@ -124,6 +127,7 @@ class SenseurRF24(SenseurModuleProducerAbstract):
 
         idmg = etat_senseurspassifs.clecertificat.enveloppe.idmg
 
+        from senseurspassifs_rpi.RF24Server import NRF24Server
         self._rf24_server = NRF24Server(idmg, environnement)
         self.__queue_messages: Optional[asyncio.Queue] = None
         self.__loop = None
