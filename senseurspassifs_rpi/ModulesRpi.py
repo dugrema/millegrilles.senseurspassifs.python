@@ -65,6 +65,8 @@ class AffichageLCD2Lignes(ModuleAfficheLignes):
         await self._afficher_page(list())
 
     async def fermer(self):
+        # Vider contenu, fermer backlight
+        await self._afficher_page(list())
         await asyncio.to_thread(self.__lcd_handler.set_backlight, False)
 
     async def _afficher_page(self, page: list):
