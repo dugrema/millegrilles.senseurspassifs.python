@@ -19,7 +19,7 @@ import donna25519
 import RPi.GPIO as GPIO
 
 from threading import Thread, Event, Lock
-from os import path, urandom, environ
+from os import path, urandom, environ, makedirs
 from zlib import crc32
 from struct import unpack
 
@@ -664,13 +664,16 @@ class ReserveDHCP:
 
     def sauvegarder_fichier_dhcp(self):
 
+        fichier_dhcp_path = self.__fichier_dhcp
+        makedirs(path.dirname(fichier_dhcp_path), exist_ok=True)
+
         # Changer la cle de bytes a str
         node_id_str_by_uuid = dict()
         for uuid_bytes, value in self.__node_id_by_uuid.items():
             uuid_str = binascii.hexlify(uuid_bytes).decode('utf8')
             node_id_str_by_uuid[uuid_str] = value
 
-        with open(self.__fichier_dhcp, 'w') as fichier:
+        with open(fichier_dhcp_path, 'w') as fichier:
             json.dump(node_id_str_by_uuid, fichier)
 
     def conserver_cle(self, uuid: bytes, cle_publique: bytes):
