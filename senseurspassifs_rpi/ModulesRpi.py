@@ -68,7 +68,7 @@ class AffichageLCD2Lignes(ModuleAfficheLignes):
         # Vider contenu, fermer backlight
         await self.desactiver_affichage()
         try:
-            await asyncio.sleep(0.1)  # Laisser LCD terminer
+            await asyncio.sleep(0.1)  # Attendre fin thread LCD
         except asyncio.TimeoutError:
             pass
 
@@ -76,6 +76,7 @@ class AffichageLCD2Lignes(ModuleAfficheLignes):
             # Cleanup final
             self._lignes_affichage = list()  # Clear affichage
             await self._afficher_page(list())
+            await asyncio.sleep(0.2)  # Laisser LCD terminer
         except asyncio.TimeoutError:
             pass
 
