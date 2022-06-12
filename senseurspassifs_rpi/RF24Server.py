@@ -35,6 +35,7 @@ from senseurspassifs_rpi import ProtocoleVersion9
 from senseurspassifs_rpi.ProtocoleVersion9 import VERSION_PROTOCOLE, \
     AssembleurPaquets, Paquet0, PaquetDemandeDHCP, PaquetBeaconDHCP, PaquetReponseDHCP, TypesMessages
 
+GPIO.setmode(GPIO.BCM)
 
 class Constantes:
     MG_CHANNEL_PROD = 0x5e
