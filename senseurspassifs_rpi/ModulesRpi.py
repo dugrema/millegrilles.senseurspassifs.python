@@ -64,6 +64,9 @@ class AffichageLCD2Lignes(ModuleAfficheLignes):
         self._lignes_affichage = list()  # Clear affichage
         await self._afficher_page(list())
 
+    async def fermer(self):
+        await asyncio.to_thread(self.__lcd_handler.set_backlight, False)
+
     async def _afficher_page(self, page: list):
         """
         Methode qui effectue l'affichage d'une page

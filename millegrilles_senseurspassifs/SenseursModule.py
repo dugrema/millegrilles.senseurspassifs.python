@@ -77,6 +77,12 @@ class SenseurModuleHandler:
             except Exception:
                 self.__logger.exception("Erreur fermeture producer")
 
+        for consumer in self._modules_consumer:
+            try:
+                await consumer.fermer()
+            except Exception:
+                self.__logger.exception("Erreur fermeture consumer")
+
     async def traitement_lectures(self):
         while True:
             message = await self.__q_lectures.get()
@@ -218,6 +224,9 @@ class SenseurModuleConsumerAbstract:
                 await asyncio.wait_for(self.__event_attente.wait(), 30)
             except TimeoutError:
                 pass
+
+    async def fermer(self):
+        pass
 
     async def charger_configuration(self):
         configuration = self._etat_senseurspassifs.configuration
