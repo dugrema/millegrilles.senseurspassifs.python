@@ -166,12 +166,14 @@ class ModuleAfficheLignes(ModuleCollecteSenseurs):
 
     async def activer_affichage(self):
         self.__logger.info("Activer affichage")
+        self.__event_page.clear()
         self._event_affichage_actif.set()
 
     async def desactiver_affichage(self):
         self.__logger.info("Desactiver affichage")
-        self._event_affichage_actif.clear()
         self._lignes_affichage = list()  # Clear affichage
+        self._event_affichage_actif.clear()
+        self.__event_page.set()
 
     async def run_affichage(self):
         while True:
@@ -217,7 +219,7 @@ class ModuleAfficheLignes(ModuleCollecteSenseurs):
     async def __afficher_heure(self):
         nb_secs = float(self.__delai_pages)
         increments = 0.25
-        while nb_secs > 0.0:
+        while nb_secs > 0.0 and self.__event_page.is_set() is False:
             nb_secs -= increments
 
             # Prendre heure courante, formatter
@@ -232,7 +234,7 @@ class ModuleAfficheLignes(ModuleCollecteSenseurs):
             await self._afficher_page(lignes_affichage)
 
             try:
-                await asyncio.sleep(increments)
+                await asyncio.wait_for(self.__event_page.wait(), increments)
             except asyncio.TimeoutError:
                 pass
 
