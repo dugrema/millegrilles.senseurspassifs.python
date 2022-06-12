@@ -47,10 +47,12 @@ class AffichageLCD2Lignes(ModuleAfficheLignes):
 
     async def activer_affichage(self):
         self.__logger.info("Activer affichage")
+        await super().activer_affichage()
         await asyncio.to_thread(self.__lcd_handler.set_backlight, True)
 
     async def desactiver_affichage(self):
         self.__logger.info("Desactiver affichage")
+        await super().desactiver_affichage()
         await asyncio.to_thread(self.__lcd_handler.set_backlight, False)
         self._event_affichage_actif.clear()
         self._lignes_affichage = list()  # Clear affichage
