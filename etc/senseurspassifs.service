@@ -1,0 +1,20 @@
+[Unit]
+Description=SenseursPassifs Hub pour MilleGrilles.
+
+[Service]
+Type=simple
+Nice=5
+PIDFile=/var/run/mgsenseurspassifs.pid
+ExecStart=/var/opt/millegrilles/bin/start_senseurspassifs_hub.sh --lcd2lines --dht 27 --rf24hub
+# ExecStop=/opt/millegrilles/bin/monitor.sh stop
+# ExecStartPre=+/opt/millegrilles/bin/prestart_monitor.sh
+User=root
+#Group=millegrilles
+Restart=always
+RestartSec=30s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=senseurspassifs_hub
+
+[Install]
+WantedBy=multi-user.target
