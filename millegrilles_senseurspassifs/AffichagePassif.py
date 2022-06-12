@@ -215,9 +215,9 @@ class ModuleAfficheLignes(ModuleCollecteSenseurs):
         return lignes
 
     async def __afficher_heure(self):
-        nb_secs = self.__delai_pages
+        nb_secs = float(self.__delai_pages)
         increments = 0.25
-        while nb_secs > 0:
+        while nb_secs > 0.0:
             nb_secs -= increments
 
             # Prendre heure courante, formatter
@@ -231,7 +231,6 @@ class ModuleAfficheLignes(ModuleCollecteSenseurs):
             logging.debug("Horloge: %s" % str(lignes_affichage))
             await self._afficher_page(lignes_affichage)
 
-            # Attendre 1 seconde
             try:
                 await asyncio.sleep(increments)
             except asyncio.TimeoutError:

@@ -64,7 +64,7 @@ class AffichageLCD2Lignes(ModuleAfficheLignes):
         :param page:
         :return:
         """
-        self.__logger.info("Lignes a afficher pour la page:\n%s" % '\n'.join(page))
+        # self.__logger.debug("Lignes a afficher pour la page:\n%s" % '\n'.join(page))
         try:
             await asyncio.to_thread(self.__afficher_page_thread, page)
         except Exception:
