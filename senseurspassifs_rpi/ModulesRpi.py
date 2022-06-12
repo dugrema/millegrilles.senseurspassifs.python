@@ -55,10 +55,6 @@ class AffichageLCD2Lignes(ModuleAfficheLignes):
         self.__logger.info("Activer affichage")
         await super().activer_affichage()
         await asyncio.to_thread(self.__lcd_handler.set_backlight, True)
-        try:
-            await asyncio.sleep(0.5)  # Laisser LCD terminer
-        except asyncio.TimeoutError:
-            pass
 
     async def desactiver_affichage(self):
         self.__logger.info("Desactiver affichage")
@@ -72,6 +68,10 @@ class AffichageLCD2Lignes(ModuleAfficheLignes):
         # Vider contenu, fermer backlight
         await self._afficher_page(list())
         await asyncio.to_thread(self.__lcd_handler.set_backlight, False)
+        try:
+            await asyncio.sleep(0.5)  # Laisser LCD terminer
+        except asyncio.TimeoutError:
+            pass
 
     async def _afficher_page(self, page: list):
         """
