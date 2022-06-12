@@ -10,7 +10,6 @@ from typing import Optional
 from millegrilles_senseurspassifs.Configuration import ConfigurationSenseursPassifs
 from millegrilles_senseurspassifs.EtatSenseursPassifs import EtatSenseursPassifs
 from millegrilles_senseurspassifs.RabbitMQDao import RabbitMQDao
-from millegrilles_senseurspassifs.SenseursModule import SenseurModuleHandler
 from millegrilles_senseurspassifs.ModulesBase import ModuleHandlerBase
 
 
@@ -100,6 +99,7 @@ class ApplicationInstance:
 
     async def fermer(self):
         self._stop_event.set()
+        await self._senseur_modules_handler.fermer()
 
     async def entretien_comptes(self):
         self.__logger.debug("entretien_comptes")

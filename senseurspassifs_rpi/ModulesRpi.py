@@ -146,6 +146,9 @@ class SenseurRF24(SenseurModuleProducerAbstract):
 
         self.__logger.info("SenseurRF24 end")
 
+    async def fermer(self):
+        self._rf24_server.fermer()
+
     def callback_lecture(self, message):
         self.__loop.call_soon_threadsafe(self.__queue_messages.put_nowait, message)
 

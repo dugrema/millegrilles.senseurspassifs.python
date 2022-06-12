@@ -70,6 +70,13 @@ class SenseurModuleHandler:
         await asyncio.tasks.wait(tasks, return_when=asyncio.tasks.FIRST_COMPLETED)
         self.__logger.info("Fin execution modules")
 
+    async def fermer(self):
+        for producer in self._modules_producer:
+            try:
+                await producer.fermer()
+            except Exception:
+                self.__logger.exception("Erreur fermeture producer")
+
     async def traitement_lectures(self):
         while True:
             message = await self.__q_lectures.get()
@@ -175,6 +182,9 @@ class SenseurModuleProducerAbstract:
         :return:
         """
         await self.__lecture_callback(self._no_senseur, senseurs)
+
+    async def fermer(self):
+        pass
 
 
 class SenseurModuleConsumerAbstract:
