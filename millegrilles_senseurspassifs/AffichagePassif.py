@@ -216,8 +216,9 @@ class ModuleAfficheLignes(ModuleCollecteSenseurs):
 
     async def __afficher_heure(self):
         nb_secs = self.__delai_pages
+        increments = 0.25
         while nb_secs > 0:
-            nb_secs -= 1
+            nb_secs -= increments
 
             # Prendre heure courante, formatter
             now = datetime.datetime.utcnow().astimezone(pytz.UTC)  # Set date a UTC
@@ -232,7 +233,7 @@ class ModuleAfficheLignes(ModuleCollecteSenseurs):
 
             # Attendre 1 seconde
             try:
-                await asyncio.sleep(1)
+                await asyncio.sleep(increments)
             except asyncio.TimeoutError:
                 pass
 
