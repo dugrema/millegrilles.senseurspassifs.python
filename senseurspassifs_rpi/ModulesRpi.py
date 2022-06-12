@@ -10,6 +10,7 @@ from millegrilles_senseurspassifs.SenseursModule import SenseurModuleHandler, Se
 
 from senseurspassifs_rpi.RPiTWI import LcdHandler
 from senseurspassifs_rpi.AdafruitDHT import ThermometreAdafruitGPIO
+from senseurspassifs_rpi.RF24Server import NRF24Server
 
 
 class RpiModuleHandler(SenseurModuleHandler):
@@ -30,6 +31,11 @@ class RpiModuleHandler(SenseurModuleHandler):
             pin = args.dht
             senseur_dht = SenseurDHT(self, self._etat_senseurspassifs, pin, self.traiter_lecture_interne)
             self._modules_producer.append(senseur_dht)
+
+        if args.rf24hub is not None:
+            env_rf24 = args.rf24env
+            rf24_hub = SenseurRF24(self, self._etat_senseurspassifs, self.traiter_lecture_interne, env_rf24)
+            self._modules_producer.append(rf24_hub)
 
 
 class AffichageLCD2Lignes(ModuleAfficheLignes):
@@ -107,3 +113,42 @@ class SenseurDHT(SenseurModuleProducerAbstract):
                 except asyncio.TimeoutError:
                     pass
 
+
+class SenseurRF24(SenseurModuleProducerAbstract):
+
+    def __init__(self, handler: SenseurModuleHandler, etat_senseurspassifs: EtatSenseursPassifs, lecture_callback, environnement='prod'):
+        instance_id = etat_senseurspassifs.instance_id
+        no_senseur = '%s_RF24' % instance_id
+        super().__init__(handler, etat_senseurspassifs, no_senseur, lecture_callback)
+        self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
+
+        idmg = etat_senseurspassifs.clecertificat.enveloppe.idmg
+
+        self._rf24_server = NRF24Server(idmg, environnement)
+        self.__queue_messages: Optional[asyncio.Queue] = None
+        self.__loop = None
+
+    async def run(self):
+        self.__loop = asyncio.get_event_loop()
+        self.__queue_messages = asyncio.Queue(maxsize=50)
+        self.__logger.info("SenseurRF24 start")
+        self._rf24_server.start(self.callback_lecture)
+
+        tasks = [
+            asyncio.create_task(self.traiter_messages()),
+        ]
+
+        await asyncio.tasks.wait(tasks, return_when=asyncio.tasks.FIRST_COMPLETED)
+
+        self.__logger.info("SenseurRF24 end")
+
+    def callback_lecture(self, message):
+        self.__loop.call_soon_threadsafe(self.__queue_messages.put_nowait, message)
+
+    async def traiter_messages(self):
+        while True:
+            senseurs = await self.__queue_messages.get()
+            try:
+                await self.lecture(senseurs)
+            except Exception:
+                self.__logger.exception("Erreur traitement message")

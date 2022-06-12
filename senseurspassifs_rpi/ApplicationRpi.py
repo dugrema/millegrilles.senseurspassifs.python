@@ -17,8 +17,12 @@ class ApplicationRpi(ApplicationInstance):
             help="Initialise l'affichage LCD 2 lignes via TWI (I2C)"
         )
         parser.add_argument(
-            '--rf24master', action="store_true", required=False,
+            '--rf24hub', action="store_true", required=False,
             help="Active le hub nRF24L01"
+        )
+        parser.add_argument(
+            '--rf24env', required=False, default='prod',
+            help="Environnement rf24 - dev, int ou prod (defaut prod)"
         )
         parser.add_argument(
             '--dht', type=int,
