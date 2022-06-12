@@ -174,7 +174,8 @@ class SenseurRF24(SenseurModuleProducerAbstract):
             lecture = await self.__queue_messages.get()
             self.__logger.debug("Lecture RF24 recue:\n%s" % json.dumps(lecture, indent=2))
             try:
+                no_senseur = lecture['uuid_senseur']
                 senseurs = lecture['senseurs']
-                await self.lecture(senseurs)
+                await self.lecture(senseurs, no_senseur=no_senseur)
             except Exception:
                 self.__logger.exception("Erreur traitement message")

@@ -181,13 +181,16 @@ class SenseurModuleProducerAbstract:
         # Note : placeholder, aucun effet (wait forever) - override si necessaire
         await Event().wait()
 
-    async def lecture(self, senseurs: dict):
+    async def lecture(self, senseurs: dict, no_senseur: Optional[str] = None):
         """
         Utiliser pour emettre une lecture.
         :param senseurs:
+        :param no_senseur: Override du senseur
         :return:
         """
-        await self.__lecture_callback(self._no_senseur, senseurs)
+        if no_senseur is None:
+            no_senseur = self._no_senseur
+        await self.__lecture_callback(no_senseur, senseurs)
 
     async def fermer(self):
         pass
