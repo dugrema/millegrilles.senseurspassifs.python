@@ -2,15 +2,16 @@ import argparse
 import asyncio
 import datetime
 import logging
-import signal
 
 from asyncio import Event, AbstractEventLoop, TimeoutError
 from typing import Optional
 
+from millegrilles_messages.docker.Entretien import TacheEntretien
 from millegrilles_senseurspassifs.Configuration import ConfigurationSenseursPassifs
 from millegrilles_senseurspassifs.EtatSenseursPassifs import EtatSenseursPassifs
 from millegrilles_senseurspassifs.RabbitMQDao import RabbitMQDao
 from millegrilles_senseurspassifs.ModulesBase import ModuleHandlerBase
+from millegrilles_senseurspassifs.SenseursLogHandler import SenseursLogHandler
 
 
 class ApplicationInstance:
@@ -21,14 +22,14 @@ class ApplicationInstance:
         self.__configuration = ConfigurationSenseursPassifs()
         self._etat_senseurspassifs = EtatSenseursPassifs(self.__configuration)
 
-        # self.__module_entretien_rabbitmq: Optional[EntretienRabbitMq] = None
-        # self.__tache_rabbitmq = TacheEntretien(datetime.timedelta(seconds=30), self.entretien_rabbitmq)
-
         self.__loop: Optional[AbstractEventLoop] = None
         self._stop_event: Optional[Event] = None  # Evenement d'arret global de l'application
 
         self.__rabbitmq_dao: Optional[RabbitMQDao] = None
         self._senseur_modules_handler = self.init_module_handler()
+        self.__senseurs_log_handler = SenseursLogHandler(self._etat_senseurspassifs, self._senseur_modules_handler)
+
+        self.__tache_rotation_logs = TacheEntretien(datetime.timedelta(minutes=15), self.rotation_logs)
 
     def init_module_handler(self):
         # return SenseurModuleHandler(self.__etat_senseurspassifs)
@@ -81,12 +82,7 @@ class ApplicationInstance:
         self.__configuration.parse_config(args.__dict__)
 
         self._etat_senseurspassifs.ajouter_listener(self._senseur_modules_handler.reload_configuration)
-
         await self._etat_senseurspassifs.reload_configuration()
-
-        # self.__module_entretien_rabbitmq = EntretienRabbitMq(self.__etat_midcompte)
-        # self.__etat_midcompte.ajouter_listener(self.__module_entretien_rabbitmq)
-
         await self._senseur_modules_handler.preparer_modules(args)
 
         self.__rabbitmq_dao = RabbitMQDao(self._stop_event, self._etat_senseurspassifs, self._senseur_modules_handler)
@@ -104,13 +100,42 @@ class ApplicationInstance:
     async def entretien_comptes(self):
         self.__logger.debug("entretien_comptes")
 
+    async def rotation_logs(self):
+        await self.__senseurs_log_handler.rotation_logs()
+
+    # async def rotation_logs(self):
+    #     date_now = datetime.datetime.utcnow()
+    #     date_str = date_now.strftime('%Y%m%d%H%M%S')
+    #
+    #     path_logs = self._etat_senseurspassifs.configuration.lecture_log_directory
+    #     path_fichier_log = path.join(path_logs, 'senseurs.jsonl')
+    #     path_fichier_rotation = path.join(path_logs, 'senseurs.%s.jsonl' % date_str)
+    #     try:
+    #         os.rename(path_fichier_log, path_fichier_rotation)
+    #     except FileNotFoundError:
+    #         # Rien a faire, le fichier de lectures n'existe pas
+    #         return
+    #
+    #     # Changer pointeur de sauvegarde de fichiers
+    #     await self._senseur_modules_handler.reload_configuration()
+    #
+    #     # Generer fichiers de transactions par senseur pour conserver long-terme
+    #     await asyncio.to_thread(self.generer_fichiers_transaction())
+    #
+    # def generer_fichiers_transaction(self):
+    #     """
+    #     Converti tous les fichiers senseurs.DATE.jsonl en transactions sous un repertoire pour chaque senseur.
+    #     :return:
+    #     """
+    #     pass
+
     async def entretien(self):
         self.__logger.info("entretien thread debut")
 
         while self._stop_event.is_set() is False:
             self.__logger.debug("run() debut execution cycle")
 
-            # await self.__tache_rabbitmq.run()
+            await self.__tache_rotation_logs.run()
 
             try:
                 self.__logger.debug("run() fin execution cycle")
