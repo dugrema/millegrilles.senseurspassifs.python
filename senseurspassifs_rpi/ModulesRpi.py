@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import logging
 import json
+import time
 
 from typing import Optional
 
@@ -52,6 +53,7 @@ class AffichageLCD2Lignes(ModuleAfficheLignes):
         from senseurspassifs_rpi.RPiTWI import LcdHandler
         self.__lcd_handler = LcdHandler()
         self.__lcd_handler.initialise()
+        time.sleep(0.1)  # S'assurer de laisser le temps a l'initialisation
         self.__lcd_handler.set_backlight(False)
 
     async def activer_affichage(self):
