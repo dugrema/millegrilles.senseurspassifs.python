@@ -72,6 +72,15 @@ class EtatSenseursPassifs:
         for listener in self.__listeners_actions:
             await listener(fermer=True)
 
+    async def verifier_certificat_expire(self):
+        enveloppe = self.clecertificat.enveloppe
+        try:
+            enveloppe = await self.__validateur_certificats.valider(enveloppe.certificat_pem)
+            return enveloppe is None
+        except:
+            self.__logger.warning("Le certificat local est expire")
+            return True
+
     @property
     def configuration(self):
         return self.__configuration

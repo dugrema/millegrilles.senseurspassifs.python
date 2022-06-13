@@ -29,11 +29,17 @@ class ApplicationInstance:
         self._senseur_modules_handler = self.init_module_handler()
         self.__senseurs_log_handler = SenseursLogHandler(self._etat_senseurspassifs, self._senseur_modules_handler)
 
-        self.__tache_rotation_logs = TacheEntretien(datetime.timedelta(minutes=15), self.rotation_logs)
+        self.__taches = self.preparer_taches()
 
     def init_module_handler(self):
         # return SenseurModuleHandler(self.__etat_senseurspassifs)
         return ModuleHandlerBase(self._etat_senseurspassifs)
+
+    def preparer_taches(self) -> list:
+        taches = list()
+        taches.append(TacheEntretien(datetime.timedelta(minutes=15), self.rotation_logs))
+        taches.append(TacheEntretien(datetime.timedelta(minutes=5), self.verifier_expirations))
+        return taches
 
     def parse(self):
         parser = argparse.ArgumentParser(description="Demarrer l'application Senseurs Passifs de MilleGrilles")
@@ -103,6 +109,11 @@ class ApplicationInstance:
     async def rotation_logs(self):
         await self.__senseurs_log_handler.rotation_logs()
 
+    async def verifier_expirations(self):
+        """ Verifie l'expiration de la configuration, reload au besoin """
+        if self._etat_senseurspassifs.verifier_certificat_expire is True:
+            await self._etat_senseurspassifs.reload_configuration()
+
     # async def rotation_logs(self):
     #     date_now = datetime.datetime.utcnow()
     #     date_str = date_now.strftime('%Y%m%d%H%M%S')
@@ -135,7 +146,11 @@ class ApplicationInstance:
         while self._stop_event.is_set() is False:
             self.__logger.debug("run() debut execution cycle")
 
-            await self.__tache_rotation_logs.run()
+            for tache in self.__taches:
+                try:
+                    await tache.run()
+                except Exception:
+                    self.__logger.exception("Erreur execution tache")
 
             try:
                 self.__logger.debug("run() fin execution cycle")
