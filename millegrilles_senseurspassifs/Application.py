@@ -37,7 +37,7 @@ class ApplicationInstance:
 
     def preparer_taches(self) -> list:
         taches = list()
-        taches.append(TacheEntretien(datetime.timedelta(minutes=15), self.rotation_logs))
+        taches.append(TacheEntretien(datetime.timedelta(minutes=30), self.rotation_logs))
         taches.append(TacheEntretien(datetime.timedelta(minutes=5), self.verifier_expirations))
         return taches
 

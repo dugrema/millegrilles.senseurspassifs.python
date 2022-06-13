@@ -5,7 +5,7 @@ import logging
 import lzma
 import string
 
-from os import path, rename, listdir, makedirs
+from os import path, rename, listdir, makedirs, unlink
 
 from millegrilles_senseurspassifs.EtatSenseursPassifs import EtatSenseursPassifs
 from millegrilles_senseurspassifs import Constantes as ConstantesSenseursPassifs
@@ -99,16 +99,16 @@ class SenseursLogHandler:
                             self.generer_fichier_transaction(dict_lectures)
                             liste_lectures.clear()  # Reset liste du senseur
 
-        for senseur_id, dict_lectures in senseurs_lectures.items():
+        for senseur_id, dict_lectures in lectures_cumulees.items():
             self.generer_fichier_transaction(dict_lectures)
 
         # Supprimer tous les fichiers de transaction
         for nom_fichier in fichiers:
             path_fichier = path.join(path_logs, nom_fichier)
-            # try:
-            #     os.unlink(path_fichier)
-            # except FileNotFoundError:
-            #     pass  # Deja supprime
+            try:
+                unlink(path_fichier)
+            except FileNotFoundError:
+                pass  # Deja supprime
 
     def get_liste_fichiers(self):
         path_logs = self.__etat_senseurspassifs.configuration.lecture_log_directory
