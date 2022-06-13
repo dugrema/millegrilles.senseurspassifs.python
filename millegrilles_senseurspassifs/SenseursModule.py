@@ -141,7 +141,11 @@ class SenseurModuleHandler:
             return
 
         event_producer = self.producer.producer_pret()
-        await asyncio.wait_for(event_producer.wait(), 5)
+        try:
+            await asyncio.wait_for(event_producer.wait(), 1)
+        except TimeoutError:
+            self.__logger.debug("Producer MQ pas pret, abort transmission")
+            return
 
         partition = self._etat_senseurspassifs.partition
 
