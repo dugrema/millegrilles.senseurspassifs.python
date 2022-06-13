@@ -134,18 +134,22 @@ class SenseursLogHandler:
             dict_lectures.copy(), ConstantesSenseursPassifs.DOMAINE_SENSEURSPASSIFS,
             action=ConstantesSenseursPassifs.EVENEMENT_DOMAINE_LECTURE)
 
-        lectures = transaction['lectures']
-        plusvieux_timestamp_int = lectures[0]['timestamp']
-        pluvieux_timestamp = datetime.datetime.utcfromtimestamp(plusvieux_timestamp_int)
-        pluvieux_timestamp_str = pluvieux_timestamp.strftime('%Y%m%d%H%M%S')
+        try:
+            lectures = transaction['lectures']
+            plusvieux_timestamp_int = lectures[0]['timestamp']
+            pluvieux_timestamp = datetime.datetime.utcfromtimestamp(plusvieux_timestamp_int)
+            pluvieux_timestamp_str = pluvieux_timestamp.strftime('%Y%m%d%H%M%S')
 
-        nom_fichier_transaction = '%s.%s.json.tar.xz' % (format_filename(transaction['senseur']), pluvieux_timestamp_str)
+            nom_fichier_transaction = '%s.%s.json.tar.xz' % (format_filename(transaction['senseur']), pluvieux_timestamp_str)
+        except (TypeError, KeyError):
+            self.__logger.exception("Fichier log pour senseur ne peut pas etre traite (dropped) : %s", dict_lectures)
+            return
+
         path_fichier = path.join(self.path_pending, nom_fichier_transaction)
 
         with lzma.open(path_fichier, 'wt') as fichier_transaction:
             json.dump(transaction, fichier_transaction, sort_keys=True)
 
-        pass
 
 def format_filename(s):
     """
