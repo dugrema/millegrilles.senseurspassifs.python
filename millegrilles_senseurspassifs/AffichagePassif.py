@@ -182,7 +182,7 @@ class ModuleAfficheLignes(ModuleCollecteSenseurs):
             await self._event_affichage_actif.wait()  # Attendre que l'affichage soit active
 
             if self._event_affichage_actif.is_set():
-                page = self._get_page()
+                page = await self._get_page()
                 if page is None:
                     # On est entre deux passes d'affichage, afficher l'heure
                     await self.__afficher_heure()
@@ -203,9 +203,9 @@ class ModuleAfficheLignes(ModuleCollecteSenseurs):
         """
         self.__logger.debug("Lignes a afficher pour la page:\n%s" % '\n'.join(page))
 
-    def _get_page(self) -> Optional[list]:
+    async def _get_page(self) -> Optional[list]:
         if self._lignes_affichage is None:
-            self._lignes_affichage = self._generer_page()
+            self._lignes_affichage = await self._generer_page()
         elif len(self._lignes_affichage) == 0:
             self._lignes_affichage = None
             return None
@@ -240,18 +240,32 @@ class ModuleAfficheLignes(ModuleCollecteSenseurs):
             except asyncio.TimeoutError:
                 pass
 
-    def _generer_page(self) -> list:
+    async def _generer_page(self) -> list:
         """
         Genere toutes les lignes de donnees en utilisant le formattage demande
         :return:
         """
-        lignes = []
+        lignes = list()
+
+        producer = self._etat_senseurspassifs.producer
+        if producer is not None:
+            try:
+                await asyncio.wait_for(producer.producer_pret().wait(), 1)
+                offline = False
+            except asyncio.TimeoutError:
+                offline = True
+        else:
+            offline = True
+
+        if offline is True:
+            lignes.append("ERREUR")
+            lignes.append("Offline")
 
         try:
             instance_id = self._configuration_hub['instance_id']
         except (TypeError, KeyError):
             self.__logger.warning("Configuration de l'affichage %s n'est pas encore recue" % self._no_senseur)
-            return list()
+            return lignes
 
         try:
             formattage = self._configuration_hub['lcd_affichage']
