@@ -46,6 +46,8 @@ class AffichageLCD2Lignes(ModuleAfficheLignes):
         self.__lcd_handler: Optional[LcdHandler] = None
         self._initialiser()
 
+        self._rafraichissement_horloge = 0.25
+
     def _initialiser(self):
         from senseurspassifs_rpi.RPiTWI import LcdHandler
         self.__lcd_handler = LcdHandler()

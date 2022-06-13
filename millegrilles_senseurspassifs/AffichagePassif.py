@@ -95,8 +95,8 @@ class ModuleCollecteSenseurs(SenseurModuleConsumerAbstract):
                             requete, ConstantesSenseursPassifs.DOMAINE_SENSEURSPASSIFS,
                             ConstantesSenseursPassifs.REQUETE_LISTE_SENSEURS_PAR_UUID, Constantes.SECURITE_PRIVE,
                             partition=instance_id)
-                    except TimeoutError:
-                        self.__logger.warning("WARN Echec requete pour charger senseur %s (instance_id %s)" % (self.__uuid_senseurs, instance_id))
+                    except asyncio.TimeoutError:
+                        self.__logger.debug("Echec requete pour charger senseur %s (instance_id %s) - OK" % (self.__uuid_senseurs, instance_id))
                         continue
 
                     senseurs = senseurs_wrapper.parsed['senseurs']
@@ -132,6 +132,8 @@ class ModuleAfficheLignes(ModuleCollecteSenseurs):
         self.__delai_pages = 5.0
         self.__event_page: Optional[asyncio.Event] = None
         self._event_affichage_actif: Optional[asyncio.Event] = None
+
+        self._rafraichissement_horloge = 1.0
 
         self._lignes_affichage = list()
 
@@ -199,7 +201,7 @@ class ModuleAfficheLignes(ModuleCollecteSenseurs):
         :param page:
         :return:
         """
-        self.__logger.info("Lignes a afficher pour la page:\n%s" % '\n'.join(page))
+        self.__logger.debug("Lignes a afficher pour la page:\n%s" % '\n'.join(page))
 
     def _get_page(self) -> Optional[list]:
         if self._lignes_affichage is None:
@@ -218,7 +220,7 @@ class ModuleAfficheLignes(ModuleCollecteSenseurs):
 
     async def __afficher_heure(self):
         nb_secs = float(self.__delai_pages)
-        increments = 0.25
+        increments = self._rafraichissement_horloge
         while nb_secs > 0.0 and self.__event_page.is_set() is False:
             nb_secs -= increments
 
