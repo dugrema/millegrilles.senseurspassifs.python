@@ -17,5 +17,6 @@ class ModuleHandlerBase(SenseurModuleHandler):
 
         if args.affichagelog is True:
             self.__logger.info("Activer ModuleAffichageLignes")
-            self._modules_consumer.append(ModuleAfficheLignes(self, self._etat_senseurspassifs, 'affichagelignes'))
+            self._modules_consumer.append(ModuleAfficheLignes(self, self._etat_senseurspassifs, 'affichagelignes',
+                                                              args.timezone))
 

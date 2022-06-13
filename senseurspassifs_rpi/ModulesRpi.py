@@ -22,7 +22,8 @@ class RpiModuleHandler(SenseurModuleHandler):
 
         if args.lcd2lines is True:
             self.__logger.info("Activer LCD 2 lignes via TWI")
-            affichage_lcd = await asyncio.to_thread(AffichageLCD2Lignes, self, self._etat_senseurspassifs, 'LCD2LignesTWI')
+            affichage_lcd = await asyncio.to_thread(AffichageLCD2Lignes, self, self._etat_senseurspassifs,
+                                                    'LCD2LignesTWI', args.timezone)
             self._modules_consumer.append(affichage_lcd)
 
         if args.dht is not None:
@@ -38,8 +39,9 @@ class RpiModuleHandler(SenseurModuleHandler):
 
 class AffichageLCD2Lignes(ModuleAfficheLignes):
 
-    def __init__(self, handler: SenseurModuleHandler, etat_senseurspassifs: EtatSenseursPassifs, no_senseur: str):
-        super().__init__(handler, etat_senseurspassifs, no_senseur)
+    def __init__(self, handler: SenseurModuleHandler, etat_senseurspassifs: EtatSenseursPassifs, no_senseur: str,
+                 timezone_horloge: Optional[str] = None):
+        super().__init__(handler, etat_senseurspassifs, no_senseur, timezone_horloge)
 
         from senseurspassifs_rpi.RPiTWI import LcdHandler
 

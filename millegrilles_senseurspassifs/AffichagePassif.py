@@ -141,7 +141,8 @@ class ModuleAfficheLignes(ModuleCollecteSenseurs):
     Genere des lignes/pages a afficher pour le contenu des senseurs
     """
 
-    def __init__(self, handler: SenseurModuleHandler, etat_senseurspassifs: EtatSenseursPassifs, no_senseur: str):
+    def __init__(self, handler: SenseurModuleHandler, etat_senseurspassifs: EtatSenseursPassifs, no_senseur: str,
+                 timezone_horloge: Optional[str] = None):
         super().__init__(handler, etat_senseurspassifs, no_senseur)
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self.__lignes_par_page = 2
@@ -152,6 +153,11 @@ class ModuleAfficheLignes(ModuleCollecteSenseurs):
         self._rafraichissement_horloge = 1.0
 
         self._lignes_affichage = list()
+
+        if timezone_horloge is not None:
+            self._timezone_horloge = pytz.timezone(timezone_horloge)
+        else:
+            self._timezone_horloge = None
 
     def set_lignes_par_page(self, lignes: int):
         self.__lignes_par_page = lignes
@@ -242,8 +248,8 @@ class ModuleAfficheLignes(ModuleCollecteSenseurs):
 
             # Prendre heure courante, formatter
             now = datetime.datetime.utcnow().astimezone(pytz.UTC)  # Set date a UTC
-            # if self._timezone_horloge is not None:
-            #     now = now.astimezone(self._timezone_horloge)  # Converti vers timezone demande
+            if self._timezone_horloge is not None:
+                now = now.astimezone(self._timezone_horloge)  # Converti vers timezone demande
             datestring = now.strftime('%Y-%m-%d')
             timestring = now.strftime('%H:%M:%S')
 
