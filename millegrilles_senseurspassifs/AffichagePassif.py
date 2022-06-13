@@ -32,10 +32,13 @@ class ModuleCollecteSenseurs(SenseurModuleConsumerAbstract):
     async def traiter(self, message):
         self.__logger.debug("ModuleAffichageLignes Traiter message %s" % message)
 
+        merge = False  # Pour lectures qui sont partielles (comme lectures interne, parfois senseurs sont separes)
+
         # Matcher message pour ce senseur
         if message.get('interne') is True:
             message_recu = message['message']
             action = 'lecture'
+            merge = True
         elif message.get('confirmation') is True:
             message_wrapper = message['message']
             routing_key = message_wrapper.routing_key
@@ -46,7 +49,7 @@ class ModuleCollecteSenseurs(SenseurModuleConsumerAbstract):
 
         if action in ['lecture', 'lectureConfirmee']:
             if message_recu.get('uuid_senseur') in self.__uuid_senseurs:
-                await self.maj_etat_interne(message_recu)
+                await self.maj_etat_interne(message_recu, merge)
         elif action == 'majNoeud':
             self.__logger.debug("Remplacement configuration noeud avec %s" % message_recu)
             await self.appliquer_configuration(message_recu)
@@ -113,11 +116,24 @@ class ModuleCollecteSenseurs(SenseurModuleConsumerAbstract):
             except Exception:
                 self.__logger.exception("rafraichir Erreur traitement")
 
-    async def maj_etat_interne(self, message: dict):
+    async def maj_etat_interne(self, message: dict, merge=False):
         uuid_senseur = message['uuid_senseur']
         senseurs = message['senseurs']
         self.__logger.info("ModuleAffichageLignes recu lecture %s = %s" % (uuid_senseur, senseurs))
-        self._etat_courant_senseurs[uuid_senseur] = message
+
+        if merge is True:
+            try:
+                etat_courant = self._etat_courant_senseurs[uuid_senseur]
+                senseurs = etat_courant['senseurs'].copy()
+                senseurs.update(message['senseurs'])
+                nouvel_etat = message.copy()
+                nouvel_etat['senseurs'] = senseurs
+            except KeyError:
+                nouvel_etat = message
+        else:
+            nouvel_etat = message
+
+        self._etat_courant_senseurs[uuid_senseur] = nouvel_etat
 
 
 class ModuleAfficheLignes(ModuleCollecteSenseurs):

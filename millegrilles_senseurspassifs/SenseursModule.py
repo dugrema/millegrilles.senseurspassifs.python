@@ -226,7 +226,8 @@ class SenseurModuleConsumerAbstract:
                 # Chargement initial de la configuration du hub
                 configuration_hub = await self.get_configuration_hub()
                 await self.appliquer_configuration(configuration_hub)
-                await self.rafraichir()
+                if hasattr(self, 'rafraichir'):
+                    await self.rafraichir()
             try:
                 await asyncio.wait_for(self.__event_attente.wait(), 30)
             except TimeoutError:
@@ -241,7 +242,8 @@ class SenseurModuleConsumerAbstract:
         try:
             with open(path_config, 'r') as fichier:
                 await self.appliquer_configuration(json.load(fichier))
-                await self.rafraichir()
+                if hasattr(self, 'rafraichir'):
+                    await self.rafraichir()
         except FileNotFoundError:
             self.__logger.debug("Fichier %s n'est pas preset" % path_config)
         except json.decoder.JSONDecodeError:
