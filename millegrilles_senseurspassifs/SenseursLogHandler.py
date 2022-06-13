@@ -2,10 +2,13 @@ import asyncio
 import datetime
 import json
 import logging
+import lzma
+import string
 
-from os import path, rename, listdir
+from os import path, rename, listdir, makedirs
 
 from millegrilles_senseurspassifs.EtatSenseursPassifs import EtatSenseursPassifs
+from millegrilles_senseurspassifs import Constantes as ConstantesSenseursPassifs
 
 
 class SenseursLogHandler:
@@ -34,6 +37,16 @@ class SenseursLogHandler:
         # Generer fichiers de transactions par senseur pour conserver long-terme
         await asyncio.to_thread(self.generer_fichiers_transaction)
 
+    @property
+    def path_pending(self):
+        path_logs = self.__etat_senseurspassifs.configuration.lecture_log_directory
+        return path.join(path_logs, 'pending')
+
+    @property
+    def path_archives(self):
+        path_logs = self.__etat_senseurspassifs.configuration.lecture_log_directory
+        return path.join(path_logs, 'archives')
+
     def generer_fichiers_transaction(self):
         """
         Converti tous les fichiers senseurs.DATE.jsonl en transactions sous un repertoire pour chaque senseur.
@@ -42,17 +55,60 @@ class SenseursLogHandler:
         path_logs = self.__etat_senseurspassifs.configuration.lecture_log_directory
         fichiers = self.get_liste_fichiers()
 
+        # Creer repertoires
+        makedirs(self.path_pending, exist_ok=True)
+        makedirs(self.path_archives, exist_ok=True)
+
         # Lire les evenements, generer les transactions par senseur
+        lectures_cumulees = dict()  # Key = uuid_senseur, value = [lectures]
+
         for nom_fichier in fichiers:
             path_fichier = path.join(path_logs, nom_fichier)
             with open(path_fichier, 'r') as fichier:
-                ligne = fichier.readline()
-                try:
-                    lecture = json.loads(ligne)
-                except json.JSONDecodeError:
-                    self.__logger
+                for ligne in fichier:
+                    try:
+                        lecture = json.loads(ligne)
+                    except json.JSONDecodeError:
+                        self.__logger.exception("Erreur decodage fichier %s - corrompu" % path_fichier)
+                        continue
 
-        pass
+                    try:
+                        uuid_senseur = lecture['uuid_senseur']
+                        senseurs_lectures = lecture['senseurs']  # Appareils
+                    except KeyError:
+                        continue
+
+                    for senseur_id, value in senseurs_lectures.items():
+                        try:
+                            dict_lectures = lectures_cumulees[senseur_id]
+                            liste_lectures = dict_lectures['lectures']
+                        except KeyError:
+                            liste_lectures = list()
+                            dict_lectures = {
+                                'instance_id': self.__etat_senseurspassifs.instance_id,
+                                'uuid_senseur': uuid_senseur,
+                                'senseur': senseur_id,
+                                'lectures': liste_lectures
+                            }
+                            lectures_cumulees[senseur_id] = dict_lectures
+
+                        liste_lectures.append(value)
+
+                        if len(liste_lectures) >= 1000:
+                            # Flush une transaction pour ce senseur
+                            self.generer_fichier_transaction(dict_lectures)
+                            liste_lectures.clear()  # Reset liste du senseur
+
+        for senseur_id, dict_lectures in senseurs_lectures.items():
+            self.generer_fichier_transaction(dict_lectures)
+
+        # Supprimer tous les fichiers de transaction
+        for nom_fichier in fichiers:
+            path_fichier = path.join(path_logs, nom_fichier)
+            # try:
+            #     os.unlink(path_fichier)
+            # except FileNotFoundError:
+            #     pass  # Deja supprime
 
     def get_liste_fichiers(self):
         path_logs = self.__etat_senseurspassifs.configuration.lecture_log_directory
@@ -72,3 +128,38 @@ class SenseursLogHandler:
         fichiers_log = ['senseurs.%s.jsonl' % f for f in sorted(fichiers_log)]
 
         return fichiers_log
+
+    def generer_fichier_transaction(self, dict_lectures: dict):
+        transaction, uuid_transaction = self.__etat_senseurspassifs.formatteur_message.signer_message(
+            dict_lectures.copy(), ConstantesSenseursPassifs.DOMAINE_SENSEURSPASSIFS,
+            action=ConstantesSenseursPassifs.EVENEMENT_DOMAINE_LECTURE)
+
+        lectures = transaction['lectures']
+        plusvieux_timestamp_int = lectures[0]['timestamp']
+        pluvieux_timestamp = datetime.datetime.utcfromtimestamp(plusvieux_timestamp_int)
+        pluvieux_timestamp_str = pluvieux_timestamp.strftime('%Y%m%d%H%M%S')
+
+        nom_fichier_transaction = '%s.%s.json.tar.xz' % (format_filename(transaction['senseur']), pluvieux_timestamp_str)
+        path_fichier = path.join(self.path_pending, nom_fichier_transaction)
+
+        with lzma.open(path_fichier, 'wt') as fichier_transaction:
+            json.dump(transaction, fichier_transaction, sort_keys=True)
+
+        pass
+
+def format_filename(s):
+    """
+    source: https://gist.github.com/seanh/93666
+    Take a string and return a valid filename constructed from the string.
+    Uses a whitelist approach: any characters not present in valid_chars are
+    removed. Also spaces are replaced with underscores.
+
+    Note: this method may produce invalid filenames such as ``, `.` or `..`
+    When I use this method I prepend a date string like '2009_01_15_19_46_32_'
+    and append a file extension like '.txt', so I avoid the potential of using
+    an invalid filename.
+    """
+    valid_chars = "-_.() %s%s" % (string.ascii_letters, string.digits)
+    filename = ''.join(c for c in s if c in valid_chars)
+    filename = filename.replace(' ', '_')  # I don't like spaces in filenames.
+    return filename

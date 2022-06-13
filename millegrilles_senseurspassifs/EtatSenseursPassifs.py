@@ -49,18 +49,27 @@ class EtatSenseursPassifs:
         self.__mq_host = self.__configuration.mq_host or self.__configuration_json.get('mq_host') or 'localhost'
         self.__mq_port = self.__configuration.mq_port or self.__configuration_json.get('mq_port') or 5673
 
+        self.__certificat_millegrille = EnveloppeCertificat.from_file(self.__configuration.ca_pem_path)
+        self.__validateur_certificats = ValidateurCertificatCache(self.__certificat_millegrille)
+
         # Charger et verificat cle/certificat
         self.__clecertificat = CleCertificat.from_files(
             self.__configuration.key_pem_path, self.__configuration.cert_pem_path)
 
-        self.__certificat_millegrille = EnveloppeCertificat.from_file(self.__configuration.ca_pem_path)
-
         if self.__clecertificat is not None:
             idmg = self.__clecertificat.enveloppe.idmg
-            signateur = SignateurTransactionSimple(self.__clecertificat)
-            self.__formatteur_message = FormatteurMessageMilleGrilles(idmg, signateur)
-            self.__validateur_certificats = ValidateurCertificatCache(self.__certificat_millegrille)
-            self.__validateur_message = ValidateurMessage(self.__validateur_certificats)
+
+            # Valider le certificat en memoire
+            try:
+                await self.__validateur_certificats.valider(self.__clecertificat.enveloppe.chaine_pem())
+
+                signateur = SignateurTransactionSimple(self.__clecertificat)
+                self.__formatteur_message = FormatteurMessageMilleGrilles(idmg, signateur)
+                self.__validateur_message = ValidateurMessage(self.__validateur_certificats)
+            except Exception:
+                self.__logger.exception("Certificat invalide/expire")
+                self.__formatteur_message = None
+                self.__validateur_message = None
 
         for listener in self.__listeners_actions:
             await listener()
@@ -75,7 +84,7 @@ class EtatSenseursPassifs:
     async def verifier_certificat_expire(self):
         enveloppe = self.clecertificat.enveloppe
         try:
-            enveloppe = await self.__validateur_certificats.valider(enveloppe.certificat_pem)
+            enveloppe = await self.__validateur_certificats.valider(enveloppe.chaine_pem())
             return enveloppe is None
         except:
             self.__logger.warning("Le certificat local est expire")
@@ -114,3 +123,7 @@ class EtatSenseursPassifs:
     @property
     def partition(self):
         return self.__partition
+
+    @property
+    def formatteur_message(self):
+        return self.__formatteur_message
