@@ -57,24 +57,8 @@ class MqThread:
         messages_thread.set_reply_ressources(reply_res)
 
     async def run(self):
-
-        while not self.__event_stop.is_set():
-            self.__logger.info("Debut thread asyncio MessagesThread")
-
-            try:
-                # coroutine principale d'execution MQ
-                await self.__messages_thread.run_async()
-            except Exception as e:
-                self.__logger.exception("Erreur connexion MQ")
-
-            # Attendre pour redemarrer execution module
-            self.__logger.info("Fin thread asyncio MessagesThread, attendre 30 secondes pour redemarrer")
-            try:
-                await asyncio.wait_for(self.__event_stop.wait(), 30)
-            except TimeoutError:
-                pass
-
-        self.__logger.info("Fin thread MessagesThread")
+        # coroutine principale d'execution MQ
+        await self.__messages_thread.run_async()
 
     async def callback_reply_q(self, message: MessageWrapper, module_messages):
         self.__logger.debug("RabbitMQ nessage recu : %s" % message)
