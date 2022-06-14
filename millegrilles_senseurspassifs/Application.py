@@ -12,6 +12,7 @@ from millegrilles_senseurspassifs.EtatSenseursPassifs import EtatSenseursPassifs
 from millegrilles_senseurspassifs.RabbitMQDao import RabbitMQDao
 from millegrilles_senseurspassifs.ModulesBase import ModuleHandlerBase
 from millegrilles_senseurspassifs.SenseursLogHandler import SenseursLogHandler
+from millegrilles_messages.messages.CleCertificat import CleCertificat
 
 
 class ApplicationInstance:
@@ -111,7 +112,28 @@ class ApplicationInstance:
 
     async def verifier_expirations(self):
         """ Verifie l'expiration de la configuration, reload au besoin """
-        if self._etat_senseurspassifs.verifier_certificat_expire is True:
+        reload = False
+        try:
+            enveloppe = self._etat_senseurspassifs.clecertificat.enveloppe
+            date_expiration = enveloppe.not_valid_after
+        except TypeError:
+            self.__logger.warning("Certificat n'a pas ete charge, on tente un reload de la configuration")
+            reload = True  # Certificat manquant
+        else:
+            try:
+                # Charger le certificat sur disque pour verifier si on a une nouvelle version
+                configuration = self._etat_senseurspassifs.configuration
+                clecertificat_disque = CleCertificat.from_files(configuration.key_pem_path, configuration.cert_pem_path)
+                if clecertificat_disque.cle_correspondent():
+                    date_expiration_disque = clecertificat_disque.enveloppe.not_valid_after
+
+                    if date_expiration_disque > date_expiration:
+                        self.__logger.info("Nouveau certificat disponible, on remplace la configuration")
+                        reload = True
+            except Exception:
+                self.__logger.exception("Erreur verification date expiration certificat local")
+
+        if reload is True:
             await self._etat_senseurspassifs.reload_configuration()
 
     # async def rotation_logs(self):
