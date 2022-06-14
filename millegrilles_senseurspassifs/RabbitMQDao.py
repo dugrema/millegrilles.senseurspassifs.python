@@ -47,7 +47,6 @@ class MqThread:
         self.__messages_thread = messages_thread
 
     def creer_ressources_consommation(self, messages_thread: MessagesThread):
-        instance_id = self.__etat_senseurspassifs.instance_id
         reply_res = RessourcesConsommation(self.callback_reply_q)
 
         # RK Public pour toutes les instances
