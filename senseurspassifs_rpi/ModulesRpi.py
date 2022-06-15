@@ -165,7 +165,10 @@ class SenseurRF24(SenseurModuleProducerAbstract):
             asyncio.create_task(self.traiter_messages()),
         ]
 
-        await asyncio.tasks.wait(tasks, return_when=asyncio.tasks.FIRST_COMPLETED)
+        try:
+            await asyncio.tasks.wait(tasks, return_when=asyncio.tasks.FIRST_COMPLETED)
+        finally:
+            self._rf24_server.fermer()
 
         self.__logger.info("SenseurRF24 end")
 
