@@ -53,7 +53,7 @@ class SenseurModuleHandler:
     async def run(self):
         # Creer une liste de tasks pour executer tous les modules
         tasks = [
-            asyncio.create_task(self.traitement_lectures())
+            asyncio.create_task(self.traitement_lectures(), name="traitement_lectures")
         ]
 
         if len(self._modules_consumer) == 0 and len(self._modules_producer) == 0:

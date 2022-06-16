@@ -194,11 +194,14 @@ class ApplicationInstance:
         """
 
         tasks = [
-            asyncio.create_task(self.entretien()),
-            asyncio.create_task(self.__rabbitmq_dao.run()),
-            asyncio.create_task(self._senseur_modules_handler.run()),
+            asyncio.create_task(self.entretien(), name="entretien"),
+            asyncio.create_task(self.__rabbitmq_dao.run(), name="mq"),
+            asyncio.create_task(self._senseur_modules_handler.run(), name="senseur_modules"),
             self.__attendre_fermer()
         ]
 
         # Execution de la loop avec toutes les tasks
-        await asyncio.tasks.wait(tasks, return_when=asyncio.tasks.FIRST_COMPLETED)
+        try:
+            await asyncio.tasks.wait(tasks, return_when=asyncio.tasks.FIRST_COMPLETED)
+        finally:
+            await self.fermer()
