@@ -33,6 +33,7 @@ class LcdHandler:
     # Timing constants
     E_PULSE = 0.0005
     E_DELAY = 0.0005
+    L_DELAY = 2.0000
 
     def __init__(self):
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
@@ -46,14 +47,21 @@ class LcdHandler:
         self.__logger.debug("LcdHandler.initialise()")
         self.bus = smbus.SMBus(1)  # Rev 2 Pi uses 1
 
+        time.sleep(LcdHandler.E_DELAY)
+
         # Initialise display
         self.lcd_byte(0x33, LcdHandler.LCD_CMD)  # 110011 Initialise
-        self.lcd_byte(0x32, LcdHandler.LCD_CMD)  # 110010 Initialise
-        self.lcd_byte(0x06, LcdHandler.LCD_CMD)  # 000110 Cursor move direction
-        self.lcd_byte(0x0C, LcdHandler.LCD_CMD)  # 001100 Display On,Cursor Off, Blink Off
-        self.lcd_byte(0x28, LcdHandler.LCD_CMD)  # 101000 Data length, number of lines, font size
-        self.lcd_byte(0x01, LcdHandler.LCD_CMD)  # 000001 Clear display
         time.sleep(LcdHandler.E_DELAY)
+        self.lcd_byte(0x32, LcdHandler.LCD_CMD)  # 110010 Initialise
+        time.sleep(LcdHandler.E_DELAY)
+        self.lcd_byte(0x06, LcdHandler.LCD_CMD)  # 000110 Cursor move direction
+        time.sleep(LcdHandler.E_DELAY)
+        self.lcd_byte(0x0C, LcdHandler.LCD_CMD)  # 001100 Display On,Cursor Off, Blink Off
+        time.sleep(LcdHandler.E_DELAY)
+        self.lcd_byte(0x28, LcdHandler.LCD_CMD)  # 101000 Data length, number of lines, font size
+        time.sleep(LcdHandler.E_DELAY)
+        self.lcd_byte(0x01, LcdHandler.LCD_CMD)  # 000001 Clear display
+        time.sleep(LcdHandler.L_DELAY)
         
     # Close LCD, shut down the backlight. Write "Stopped".
     def close(self):
