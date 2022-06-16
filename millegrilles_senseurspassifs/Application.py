@@ -104,6 +104,11 @@ class ApplicationInstance:
         self._stop_event.set()
         await self._senseur_modules_handler.fermer()
 
+    async def __attendre_fermer(self):
+        await self._stop_event.wait()
+        self.__logger.info("executer __attendre_fermer")
+        await self.fermer()
+
     async def entretien_comptes(self):
         self.__logger.debug("entretien_comptes")
 
@@ -191,7 +196,8 @@ class ApplicationInstance:
         tasks = [
             asyncio.create_task(self.entretien()),
             asyncio.create_task(self.__rabbitmq_dao.run()),
-            asyncio.create_task(self._senseur_modules_handler.run())
+            asyncio.create_task(self._senseur_modules_handler.run()),
+            self.__attendre_fermer()
         ]
 
         # Execution de la loop avec toutes les tasks
