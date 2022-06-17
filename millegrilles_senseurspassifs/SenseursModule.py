@@ -67,8 +67,13 @@ class SenseurModuleHandler:
 
         # Execution de la loop avec toutes les tasks
         self.__logger.info("Debut execution modules")
-        await asyncio.tasks.wait(tasks, return_when=asyncio.tasks.FIRST_COMPLETED)
-        self.__logger.info("Fin execution modules")
+        try:
+            await asyncio.tasks.wait(tasks, return_when=asyncio.tasks.FIRST_COMPLETED)
+        except Exception:
+            self.__logger.exception("Erreur traitement senseurs, fermeture thread SenseurModuleHandler")
+        finally:
+            await self.fermer()
+        self.__logger.info("Fin SenseurModuleHandler")
 
     async def fermer(self):
         for producer in self._modules_producer:
