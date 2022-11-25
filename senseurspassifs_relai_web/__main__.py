@@ -1,6 +1,6 @@
 import asyncio
 
-from senseurspassifs_relai_web.RelaiWeb import demarrer
+from senseurspassifs_relai_web.ApplicationRelaiWeb import demarrer
 
 
 def main():
