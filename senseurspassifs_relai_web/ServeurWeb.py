@@ -8,6 +8,8 @@ from asyncio import Event
 from asyncio.exceptions import TimeoutError
 from typing import Optional
 
+from senseurspassifs_relai_web import GetCommands
+
 from millegrilles_messages.messages import Constantes
 from millegrilles_senseurspassifs.EtatSenseursPassifs import EtatSenseursPassifs
 from senseurspassifs_relai_web.Configuration import ConfigurationWeb
@@ -33,7 +35,9 @@ class WebServer:
 
     def _preparer_routes(self):
         self.__app.add_routes([
-            web.get('/appareils/test', self.handle_test),
+            web.post('/appareils/inscrire', self.handle_post_inscrire),
+            web.post('/appareils/poll', self.handle_post_poll),
+            web.post('/appareils/commande', self.handle_post_commande),
         ])
 
     async def entretien(self):
@@ -66,8 +70,14 @@ class WebServer:
             self.__logger.info("Site arrete")
             await runner.cleanup()
 
-    async def handle_test(self, request):
-        return web.Response(text="Allo")
+    async def handle_post_inscrire(self, request):
+        return await GetCommands.handle_post_inscrire(self, request)
+
+    async def handle_post_poll(self, request):
+        return await GetCommands.handle_post_poll(self, request)
+
+    async def handle_post_commande(self, request):
+        return await GetCommands.handle_post_commande(self, request)
 
 
 class ModuleSenseurWebServer:
