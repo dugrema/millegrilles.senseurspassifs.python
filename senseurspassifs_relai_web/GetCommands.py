@@ -15,11 +15,14 @@ async def handle_post_inscrire(server, request):
 
         # Valider la commande
         etat = server.etat_senseurspassifs
-        resultat = await etat.validateur_message.verifier(commande)
-        print("Resultat validation %s" % resultat)
+        await etat.validateur_message.verifier(commande)
+        print("Resultat validation OK")
+
+        reponse = {'ok': True}
+        reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(reponse)
 
         # Retour code pour dire que la demande d'inscription est recue.
-        return web.json_response(status=202)
+        return web.json_response(reponse, status=202)
     except InvalidSignature:
         # Erreur de signature, message rejete
         return web.json_response(status=403)
