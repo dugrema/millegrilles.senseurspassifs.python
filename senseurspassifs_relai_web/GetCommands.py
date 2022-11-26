@@ -16,10 +16,18 @@ async def handle_post_inscrire(server, request):
         # Valider la commande
         etat = server.etat_senseurspassifs
         await etat.validateur_message.verifier(commande)
-        print("Resultat validation OK")
+        print("handle_post_inscrire Resultat validation OK")
 
-        reponse = {'ok': True}
-        reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(reponse)
+        # Verifier si on a recu le certificat pour la cle publique
+        try:
+            reponse = await server.message_handler.demande_certificat(commande)
+        except asyncio.TimeoutError:
+            reponse = {'ok': False, 'err': 'Timeout'}
+            reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(reponse)
+        except Exception as e:
+            logger.error("handle_post_inscrire Erreur : %s" % e)
+            reponse = {'ok': False, 'err': str(e)}
+            reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(reponse)
 
         # Retour code pour dire que la demande d'inscription est recue.
         return web.json_response(reponse, status=202)

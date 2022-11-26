@@ -13,6 +13,7 @@ from senseurspassifs_relai_web import GetCommands
 from millegrilles_messages.messages import Constantes
 from millegrilles_senseurspassifs.EtatSenseursPassifs import EtatSenseursPassifs
 from senseurspassifs_relai_web.Configuration import ConfigurationWeb
+from senseurspassifs_relai_web.MessagesHandler import AppareilMessageHandler
 from millegrilles_senseurspassifs.SenseursModule import SenseurModuleHandler, SenseurModuleConsumerAbstract
 
 
@@ -21,6 +22,7 @@ class WebServer:
     def __init__(self, etat_senseurspassifs: EtatSenseursPassifs):
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self.etat_senseurspassifs = etat_senseurspassifs
+        self.message_handler = AppareilMessageHandler()
 
         self.configuration = ConfigurationWeb()
         self.__app = web.Application()
