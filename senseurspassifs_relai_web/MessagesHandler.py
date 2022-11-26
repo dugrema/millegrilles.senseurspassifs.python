@@ -2,6 +2,8 @@
 import asyncio
 import datetime
 
+from millegrilles_messages.messages import Constantes
+
 from millegrilles_messages.messages.EnveloppeCertificat import EnveloppeCertificat
 
 MAX_REQUETES_CERTIFICAT = 5
@@ -11,7 +13,8 @@ EXPIRATION_REQUETE_CERTIFICAT = datetime.timedelta(minutes=30)
 
 class AppareilMessageHandler:
 
-    def __init__(self):
+    def __init__(self, etat_senseurspassifs):
+        self.__etat_senseurspassifs = etat_senseurspassifs
         self.__appareils = dict()
         self.__requetes_certificat = dict()
 
@@ -43,9 +46,17 @@ class AppareilMessageHandler:
 
         # Emettre commande certificat vers SenseursPassifs, attendre reponse
         # todo emettre commande
-
-        # Attendre la reponse - raise timeout
-        return await requete.get_reponse(timeout=5)
+        producer = self.__etat_senseurspassifs.producer
+        commande = {
+            'cn': message['cn'],
+            'cle_publique': cle_publique,
+        }
+        try:
+            reponse = await producer.executer_commande(commande, 'SenseursPassifs', 'inscrire', Constantes.SECURITE_PRIVE)
+            return reponse
+        except:
+            # Attendre la reponse - raise timeout
+            return await requete.get_reponse(timeout=2)
 
     async def enregistrer_appareil(self, certificat: EnveloppeCertificat):
         fingerprint = certificat.fingerprint
@@ -97,6 +108,10 @@ class CorrelationRequeteCertificat:
     @property
     def expire(self):
         return datetime.datetime.utcnow() - self.__derniere_activite > EXPIRATION_REQUETE_CERTIFICAT
+
+    @property
+    def message(self):
+        return self.__message
 
     async def get_reponse(self, timeout=60):
         if timeout is None:

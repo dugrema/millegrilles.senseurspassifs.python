@@ -8,7 +8,7 @@ from asyncio import Event
 from asyncio.exceptions import TimeoutError
 from typing import Optional
 
-from senseurspassifs_relai_web import GetCommands
+from senseurspassifs_relai_web import HttpCommands
 
 from millegrilles_messages.messages import Constantes
 from millegrilles_senseurspassifs.EtatSenseursPassifs import EtatSenseursPassifs
@@ -22,7 +22,7 @@ class WebServer:
     def __init__(self, etat_senseurspassifs: EtatSenseursPassifs):
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self.etat_senseurspassifs = etat_senseurspassifs
-        self.message_handler = AppareilMessageHandler()
+        self.message_handler = AppareilMessageHandler(self.etat_senseurspassifs)
 
         self.configuration = ConfigurationWeb()
         self.__app = web.Application()
@@ -73,13 +73,13 @@ class WebServer:
             await runner.cleanup()
 
     async def handle_post_inscrire(self, request):
-        return await GetCommands.handle_post_inscrire(self, request)
+        return await HttpCommands.handle_post_inscrire(self, request)
 
     async def handle_post_poll(self, request):
-        return await GetCommands.handle_post_poll(self, request)
+        return await HttpCommands.handle_post_poll(self, request)
 
     async def handle_post_commande(self, request):
-        return await GetCommands.handle_post_commande(self, request)
+        return await HttpCommands.handle_post_commande(self, request)
 
 
 class ModuleSenseurWebServer:
