@@ -1,10 +1,14 @@
 # Effectue la correlation des messages pour appareils web
 import asyncio
 import datetime
+import logging
+
+from typing import Optional
 
 from millegrilles_messages.messages import Constantes
 
 from millegrilles_messages.messages.EnveloppeCertificat import EnveloppeCertificat
+from millegrilles_messages.messages.MessagesModule import MessageWrapper
 
 MAX_REQUETES_CERTIFICAT = 5
 EXPIRATION_APPAREIL = datetime.timedelta(minutes=10)
@@ -25,6 +29,16 @@ class AppareilMessageHandler:
         for fingerprint, appareil in enumerate(self.__appareils.items()):
             if appareil.expire():
                 del self.__appareils[fingerprint]
+
+    async def recevoir_message_mq(self, message: MessageWrapper):
+        routing_key = message.routing_key
+        action = routing_key.split('.')[-1]
+
+        if action in ['challengeAppareil', 'certificatAppareil']:
+            cle_publique = message.parsed['cle_publique']
+            self.__requetes_certificat[cle_publique].put_message(message)
+        else:
+            raise Exception("Type action non supportee : %s" % action)
 
     async def demande_certificat(self, message: dict):
         cle_publique = message['en-tete']['cle_publique']
@@ -48,15 +62,16 @@ class AppareilMessageHandler:
         # todo emettre commande
         producer = self.__etat_senseurspassifs.producer
         commande = {
-            'cn': message['cn'],
+            'uuid_appareil': message['uuid_appareil'],
+            'instance_id': self.__etat_senseurspassifs.instance_id,
             'cle_publique': cle_publique,
         }
         try:
-            reponse = await producer.executer_commande(commande, 'SenseursPassifs', 'inscrire', Constantes.SECURITE_PRIVE)
+            reponse = await producer.executer_commande(commande, 'SenseursPassifs', 'inscrireAppareil', Constantes.SECURITE_PRIVE)
             return reponse
         except:
             # Attendre la reponse - raise timeout
-            return await requete.get_reponse(timeout=2)
+            return await requete.get_reponse(timeout=60)
 
     async def enregistrer_appareil(self, certificat: EnveloppeCertificat):
         fingerprint = certificat.fingerprint
@@ -96,6 +111,8 @@ class CorrelationAppareil:
 class CorrelationRequeteCertificat:
 
     def __init__(self, cle_publique: str, message: dict):
+        self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
+
         self.__derniere_activite = datetime.datetime.utcnow()
         self.__cle_publique = cle_publique
         self.__message = message
@@ -109,11 +126,17 @@ class CorrelationRequeteCertificat:
     def expire(self):
         return datetime.datetime.utcnow() - self.__derniere_activite > EXPIRATION_REQUETE_CERTIFICAT
 
+    def put_message(self, message: MessageWrapper):
+        try:
+            self.__reponse.put_nowait(message)
+        except asyncio.QueueFull:
+            self.__logger.error("Erreur reception message appareil, Q %s full" % self.__cle_publique)
+
     @property
     def message(self):
         return self.__message
 
-    async def get_reponse(self, timeout=60):
+    async def get_reponse(self, timeout=60) -> Optional[MessageWrapper]:
         if timeout is None:
             reponse = self.__reponse.get_nowait()
         else:

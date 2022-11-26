@@ -93,15 +93,20 @@ class ModuleSenseurWebServer:
         self.__web_server.setup(configuration)
 
     def routing_keys(self) -> list:
+        instance_id = self.__web_server.etat_senseurspassifs.instance_id
         return [
-            'evenement.senseurspassifs_hub.*.*',
-            'commande.senseurspassifs_hub.*.*',
-            'requete.senseurspassifs_hub.*.*',
+            #'evenement.senseurspassifs_hub.*.*',
+            #'requete.senseurspassifs_hub.*.*',
+            'commande.senseurspassifs_hub.%s.challengeAppareil' % instance_id,
         ]
 
-    async def traiter(self, message):
+    async def recevoir_message_mq(self, message):
         """ Traiter messages recus via routing keys """
-        self.__logger.debug("DummyConsumer Traiter message %s" % message)
+        self.__logger.debug("ModuleSenseurWebServer Traiter message %s" % message)
+        try:
+            await self.__web_server.message_handler.recevoir_message_mq(message)
+        except Exception as e:
+            self.__logger.error("Erreur traitement message %s : %s" % (message.routing_key, e))
 
     async def entretien(self):
         await self.__web_server.entretien()
