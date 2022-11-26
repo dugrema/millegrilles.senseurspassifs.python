@@ -11,6 +11,7 @@ from millegrilles_messages.messages.ValidateurCertificats import ValidateurCerti
 from millegrilles_messages.messages.ValidateurMessage import ValidateurMessage
 from millegrilles_senseurspassifs.Configuration import ConfigurationSenseursPassifs
 from millegrilles_messages.messages.MessagesModule import MessageProducerFormatteur
+from senseurspassifs_relai_web.ValidateurMessageControleur import ValidateurMessageControleur
 
 
 class EtatSenseursPassifs:
@@ -31,7 +32,7 @@ class EtatSenseursPassifs:
 
         self.__formatteur_message: Optional[FormatteurMessageMilleGrilles] = None
         self.__validateur_certificats: Optional[ValidateurCertificatCache] = None
-        self.__validateur_message: Optional[ValidateurMessage] = None
+        self.__validateur_message: Optional[ValidateurMessageControleur] = None
 
         # self.__stop_event: Optional[Event] = None
         self.__producer: Optional[MessageProducerFormatteur] = None
@@ -65,7 +66,7 @@ class EtatSenseursPassifs:
 
                 signateur = SignateurTransactionSimple(self.__clecertificat)
                 self.__formatteur_message = FormatteurMessageMilleGrilles(idmg, signateur)
-                self.__validateur_message = ValidateurMessage(self.__validateur_certificats)
+                self.__validateur_message = ValidateurMessageControleur(self.__validateur_certificats)
             except Exception:
                 self.__logger.exception("Certificat invalide/expire")
                 self.__formatteur_message = None
@@ -127,3 +128,7 @@ class EtatSenseursPassifs:
     @property
     def formatteur_message(self):
         return self.__formatteur_message
+
+    @property
+    def validateur_message(self):
+        return self.__validateur_message

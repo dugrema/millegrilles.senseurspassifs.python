@@ -20,9 +20,9 @@ class WebServer:
 
     def __init__(self, etat_senseurspassifs: EtatSenseursPassifs):
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
-        self.__etat_senseurspassifs = etat_senseurspassifs
+        self.etat_senseurspassifs = etat_senseurspassifs
 
-        self.__configuration = ConfigurationWeb()
+        self.configuration = ConfigurationWeb()
         self.__app = web.Application()
         self.__stop_event: Optional[Event] = None
 
@@ -31,7 +31,7 @@ class WebServer:
         self._preparer_routes()
 
     def _charger_configuration(self, configuration: Optional[dict] = None):
-        self.__configuration.parse_config(configuration)
+        self.configuration.parse_config(configuration)
 
     def _preparer_routes(self):
         self.__app.add_routes([
@@ -55,7 +55,7 @@ class WebServer:
 
         runner = web.AppRunner(self.__app)
         await runner.setup()
-        site = web.TCPSite(runner, '0.0.0.0', self.__configuration.port)
+        site = web.TCPSite(runner, '0.0.0.0', self.configuration.port)
         try:
             await site.start()
             self.__logger.info("Site demarre")
