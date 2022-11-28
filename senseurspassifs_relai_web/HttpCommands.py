@@ -21,7 +21,8 @@ async def handle_post_inscrire(server, request):
         # Verifier si on a recu le certificat pour la cle publique
         try:
             reponse = await server.message_handler.demande_certificat(commande)
-            return web.json_response(reponse.parsed)  # Reponse externe, code http 200
+            reponse_parsed = reponse.parsed
+            return web.json_response(reponse_parsed)  # Reponse externe, code http 200
         except asyncio.TimeoutError:
             reponse = {'ok': False, 'err': 'Timeout'}
             #reponse = {'ok': True, 'challenge': [4, 1, 2, 3]}

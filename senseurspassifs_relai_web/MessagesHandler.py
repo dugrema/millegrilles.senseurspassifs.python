@@ -65,13 +65,14 @@ class AppareilMessageHandler:
             'uuid_appareil': message['uuid_appareil'],
             'instance_id': self.__etat_senseurspassifs.instance_id,
             'cle_publique': cle_publique,
+            'csr': message['csr'],
         }
         try:
             reponse = await producer.executer_commande(commande, 'SenseursPassifs', 'inscrireAppareil', Constantes.SECURITE_PRIVE)
             return reponse
         except:
             # Attendre la reponse - raise timeout
-            return await requete.get_reponse(timeout=60)
+            return await requete.get_reponse(timeout=10)
 
     async def enregistrer_appareil(self, certificat: EnveloppeCertificat):
         fingerprint = certificat.fingerprint
