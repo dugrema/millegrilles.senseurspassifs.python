@@ -52,6 +52,8 @@ async def handle_post_poll(server, request):
         if 'senseurspassifs' not in enveloppe.get_roles:
             return web.json_response(status=403)
 
+        correlation = await server.message_handler.enregistrer_appareil(enveloppe)
+
         try:
             timeout_http = commande['timeout_http']
             if timeout_http < 0:
@@ -61,9 +63,13 @@ async def handle_post_poll(server, request):
         except KeyError:
             timeout_http = CONST_MAX_TIMEOUT_HTTP  # Par defaut, 60 secondes
 
-        await asyncio.sleep(timeout_http)
-        reponse = {'ok': False, 'err': 'Timeout'}
-        reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(reponse)
+        try:
+            reponse_wrappee = await correlation.get_reponse(timeout_http)
+            reponse = reponse_wrappee.parsed
+        except asyncio.TimeoutError:
+            reponse = {'ok': False, 'err': 'Timeout'}
+            reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(reponse)
+
         return web.json_response(reponse)
 
     except Exception as e:
