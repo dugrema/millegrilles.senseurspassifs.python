@@ -7,6 +7,8 @@ from cryptography.exceptions import InvalidSignature
 
 logger = logging.getLogger(__name__)
 
+CONST_MAX_TIMEOUT_HTTP = 300
+
 
 async def handle_post_inscrire(server, request):
     try:
@@ -16,7 +18,7 @@ async def handle_post_inscrire(server, request):
         # Valider la commande
         etat = server.etat_senseurspassifs
         await etat.validateur_message.verifier(commande)
-        print("handle_post_inscrire Resultat validation OK")
+        logger.debug("handle_post_inscrire Resultat validation OK")
 
         # Verifier si on a recu le certificat pour la cle publique
         try:
@@ -25,9 +27,6 @@ async def handle_post_inscrire(server, request):
             return web.json_response(reponse_parsed)  # Reponse externe, code http 200
         except asyncio.TimeoutError:
             reponse = {'ok': False, 'err': 'Timeout'}
-            #reponse = {'ok': True, 'challenge': [4, 1, 2, 3]}
-            #reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(reponse)
-            #return web.json_response(reponse)
 
         reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(reponse)
 
@@ -42,8 +41,34 @@ async def handle_post_inscrire(server, request):
 
 
 async def handle_post_poll(server, request):
-    await asyncio.sleep(1)
-    return web.json_response({"text": "Allo, c'est ma reponse"})
+    try:
+        commande = await request.json()
+        logger.debug("handle_post_poll Etat recu %s" % commande)
+
+        etat = server.etat_senseurspassifs
+        enveloppe = await etat.validateur_message.verifier(commande)
+
+        # S'assurer d'avoir un appareil de role senseurspassifs
+        if 'senseurspassifs' not in enveloppe.get_roles:
+            return web.json_response(status=403)
+
+        try:
+            timeout_http = commande['timeout_http']
+            if timeout_http < 0:
+                timeout_http = 0
+            elif timeout_http > CONST_MAX_TIMEOUT_HTTP:
+                timeout_http = CONST_MAX_TIMEOUT_HTTP
+        except KeyError:
+            timeout_http = CONST_MAX_TIMEOUT_HTTP  # Par defaut, 60 secondes
+
+        await asyncio.sleep(timeout_http)
+        reponse = {'ok': False, 'err': 'Timeout'}
+        reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(reponse)
+        return web.json_response(reponse)
+
+    except Exception as e:
+        logger.error("handle_post_poll Erreur %s" % str(e))
+        return web.json_response(status=500)
 
 
 async def handle_post_commande(server, request):

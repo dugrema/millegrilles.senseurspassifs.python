@@ -22,7 +22,7 @@ class ValidateurMessageControleur(ValidateurMessage):
                        utiliser_idmg_message=False) -> Optional[EnveloppeCertificat]:
 
         entete = message['en-tete']
-        fingerprint = entete.get('fingerprint')
+        fingerprint = entete.get('fingerprint_certificat')
         if fingerprint is not None:
             return await super().verifier(message, utiliser_date_message, utiliser_idmg_message)
 
