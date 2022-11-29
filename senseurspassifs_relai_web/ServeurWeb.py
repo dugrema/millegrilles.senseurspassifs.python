@@ -12,6 +12,7 @@ from senseurspassifs_relai_web import HttpCommands
 
 from millegrilles_messages.messages import Constantes
 from millegrilles_senseurspassifs.EtatSenseursPassifs import EtatSenseursPassifs
+import millegrilles_senseurspassifs.Constantes as ConstantesSenseursPassifs
 from senseurspassifs_relai_web.Configuration import ConfigurationWeb
 from senseurspassifs_relai_web.MessagesHandler import AppareilMessageHandler
 from millegrilles_senseurspassifs.SenseursModule import SenseurModuleHandler, SenseurModuleConsumerAbstract
@@ -80,6 +81,36 @@ class WebServer:
 
     async def handle_post_commande(self, request):
         return await HttpCommands.handle_post_commande(self, request)
+
+    async def transmettre_lecture(self, uuid_appareil: str, lectures_senseurs: dict):
+        producer = self.etat_senseurspassifs.producer
+
+        if producer is None:
+            self.__logger.debug("Producer n'est pas pret, lecture n'est pas transmise")
+            return
+
+        event_producer = producer.producer_pret()
+        try:
+            await asyncio.wait_for(event_producer.wait(), 1)
+        except TimeoutError:
+            self.__logger.debug("Producer MQ pas pret, abort transmission")
+            return
+
+        message_enveloppe = {
+            'instance_id': self.etat_senseurspassifs.instance_id,
+            'uuid_senseur': uuid_appareil,
+            'senseurs': lectures_senseurs,
+        }
+
+        # partition = self._etat_senseurspassifs.partition
+
+        await producer.emettre_evenement(
+            message_enveloppe,
+            ConstantesSenseursPassifs.DOMAINE_SENSEURSPASSIFS,
+            ConstantesSenseursPassifs.EVENEMENT_DOMAINE_LECTURE,
+            # partition=partition,
+            exchanges=[Constantes.SECURITE_PRIVE]
+        )
 
 
 class ModuleSenseurWebServer:
