@@ -7,6 +7,9 @@ from senseurspassifs_relai_web import Constantes
 
 CONST_WEB_PARAMS = [
     Constantes.ENV_WEB_PORT,
+    Constantes.PARAM_CERT_PATH,
+    Constantes.PARAM_KEY_PATH,
+    Constantes.PARAM_CA_PATH,
 ]
 
 
@@ -14,6 +17,9 @@ class ConfigurationWeb:
 
     def __init__(self):
         self.port = '4443'
+        self.cert_pem_path = '/run/secrets/pki.senseurspassifs_relai_web.cert'
+        self.key_pem_path = '/run/secrets/pki.senseurspassifs_relai_web.key'
+        self.ca_pem_path = '/run/secrets/pki.millegrille'
 
     def get_env(self) -> dict:
         """
@@ -39,3 +45,6 @@ class ConfigurationWeb:
             dict_params.update(configuration)
 
         self.port = int(dict_params.get(Constantes.ENV_WEB_PORT) or self.port)
+        self.cert_pem_path = dict_params.get(Constantes.PARAM_CERT_PATH) or self.cert_pem_path
+        self.key_pem_path = dict_params.get(Constantes.PARAM_KEY_PATH) or self.key_pem_path
+        self.ca_pem_path = dict_params.get(Constantes.PARAM_CA_PATH) or self.ca_pem_path

@@ -1,7 +1,6 @@
 import asyncio
-import datetime
-import json
 import logging
+import ssl
 
 from aiohttp import web
 from asyncio import Event
@@ -15,7 +14,6 @@ from millegrilles_senseurspassifs.EtatSenseursPassifs import EtatSenseursPassifs
 import millegrilles_senseurspassifs.Constantes as ConstantesSenseursPassifs
 from senseurspassifs_relai_web.Configuration import ConfigurationWeb
 from senseurspassifs_relai_web.MessagesHandler import AppareilMessageHandler
-from millegrilles_senseurspassifs.SenseursModule import SenseurModuleHandler, SenseurModuleConsumerAbstract
 
 
 class WebServer:
@@ -29,26 +27,38 @@ class WebServer:
         self.__app = web.Application()
         self.__stop_event: Optional[Event] = None
 
+        self.__ssl_context = None
+
     def setup(self, configuration: Optional[dict] = None):
         self._charger_configuration(configuration)
         self._preparer_routes()
+
+        self.__ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        try:
+            self.__ssl_context.load_verify_locations(self.configuration.ca_pem_path)
+        except FileNotFoundError as e:
+            self.__logger.error("CA non trouve : %s" % self.configuration.ca_pem_path)
+            raise e
+
+        try:
+            self.__ssl_context.load_cert_chain(self.configuration.cert_pem_path, self.configuration.key_pem_path)
+        except FileNotFoundError as e:
+            self.__logger.error("Cert/cles non trouves : %s / %s" % (self.configuration.cert_pem_path, self.configuration.key_pem_path))
+            raise e
 
     def _charger_configuration(self, configuration: Optional[dict] = None):
         self.configuration.parse_config(configuration)
 
     def _preparer_routes(self):
         self.__app.add_routes([
-            web.post('/appareils/inscrire', self.handle_post_inscrire),
-            web.post('/appareils/poll', self.handle_post_poll),
-            web.post('/appareils/commande', self.handle_post_commande),
+            web.get('/senseurspassifs_relai/test', self.handle_test),
+            web.post('/senseurspassifs_relai/inscrire', self.handle_post_inscrire),
+            web.post('/senseurspassifs_relai/poll', self.handle_post_poll),
+            web.post('/senseurspassifs_relai/commande', self.handle_post_commande),
         ])
 
     async def entretien(self):
         self.__logger.debug('Entretien')
-        #try:
-        #    await self.__etat_senseurspassifs.entretien()
-        #except:
-        #    self.__logger.exception("Erreur entretien etat_certissuer")
 
     async def run(self, stop_event: Optional[Event] = None):
         if stop_event is not None:
@@ -58,7 +68,7 @@ class WebServer:
 
         runner = web.AppRunner(self.__app)
         await runner.setup()
-        site = web.TCPSite(runner, '0.0.0.0', self.configuration.port)
+        site = web.TCPSite(runner, '0.0.0.0', self.configuration.port, ssl_context=self.__ssl_context)
         try:
             await site.start()
             self.__logger.info("Site demarre")
@@ -72,6 +82,9 @@ class WebServer:
         finally:
             self.__logger.info("Site arrete")
             await runner.cleanup()
+
+    async def handle_test(self, request):
+        return web.json_response({'ok': True})
 
     async def handle_post_inscrire(self, request):
         return await HttpCommands.handle_post_inscrire(self, request)
@@ -102,13 +115,10 @@ class WebServer:
             'senseurs': lectures_senseurs,
         }
 
-        # partition = self._etat_senseurspassifs.partition
-
         await producer.emettre_evenement(
             message_enveloppe,
             ConstantesSenseursPassifs.DOMAINE_SENSEURSPASSIFS,
             ConstantesSenseursPassifs.EVENEMENT_DOMAINE_LECTURE,
-            # partition=partition,
             exchanges=[Constantes.SECURITE_PRIVE]
         )
 
@@ -126,8 +136,6 @@ class ModuleSenseurWebServer:
     def routing_keys(self) -> list:
         instance_id = self.__web_server.etat_senseurspassifs.instance_id
         return [
-            #'evenement.senseurspassifs_hub.*.*',
-            #'requete.senseurspassifs_hub.*.*',
             'commande.senseurspassifs_hub.%s.challengeAppareil' % instance_id,
         ]
 
