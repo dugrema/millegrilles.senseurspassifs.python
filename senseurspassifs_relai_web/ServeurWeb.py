@@ -117,7 +117,7 @@ class WebServer:
 
         await producer.emettre_evenement(
             message_enveloppe,
-            ConstantesSenseursPassifs.DOMAINE_SENSEURSPASSIFS,
+            ConstantesSenseursPassifs.ROLE_SENSEURSPASSIFS_RELAI,
             ConstantesSenseursPassifs.EVENEMENT_DOMAINE_LECTURE,
             exchanges=[Constantes.SECURITE_PRIVE]
         )
@@ -136,7 +136,7 @@ class ModuleSenseurWebServer:
     def routing_keys(self) -> list:
         instance_id = self.__web_server.etat_senseurspassifs.instance_id
         return [
-            'commande.senseurspassifs_hub.%s.challengeAppareil' % instance_id,
+            'commande.senseurspassifs_relai.%s.challengeAppareil' % instance_id,
         ]
 
     async def recevoir_message_mq(self, message):

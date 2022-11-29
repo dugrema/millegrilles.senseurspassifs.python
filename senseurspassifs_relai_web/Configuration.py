@@ -16,7 +16,7 @@ CONST_WEB_PARAMS = [
 class ConfigurationWeb:
 
     def __init__(self):
-        self.port = '4443'
+        self.port = '443'
         self.cert_pem_path = '/run/secrets/pki.senseurspassifs_relai_web.cert'
         self.key_pem_path = '/run/secrets/pki.senseurspassifs_relai_web.key'
         self.ca_pem_path = '/run/secrets/pki.millegrille'

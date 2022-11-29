@@ -57,6 +57,6 @@ class ConfigurationSenseursPassifs:
         self.key_pem_path = dict_params.get(Constantes.ENV_KEY_PEM) or self.key_pem_path
         self.mq_host = dict_params.get(Constantes.ENV_MQ_HOSTNAME) or self.mq_host
         try:
-            self.mq_port = int(dict_params.get(Constantes.ENV_MQ_PORT) or self.mq_host)
+            self.mq_port = int(dict_params.get(Constantes.ENV_MQ_PORT) or self.mq_port)
         except TypeError:
             self.mq_port = None
