@@ -99,7 +99,7 @@ class WebServer:
     async def handle_post_commande(self, request):
         return await HttpCommands.handle_post_commande(self, request)
 
-    async def transmettre_lecture(self, uuid_appareil: str, lectures_senseurs: dict):
+    async def transmettre_lecture(self, uuid_appareil: str, user_id: str, lectures_senseurs: dict):
         producer = self.etat_senseurspassifs.producer
 
         if producer is None:
@@ -116,6 +116,7 @@ class WebServer:
         message_enveloppe = {
             'instance_id': self.etat_senseurspassifs.instance_id,
             'uuid_senseur': uuid_appareil,
+            'user_id': user_id,
             'senseurs': lectures_senseurs,
         }
 
