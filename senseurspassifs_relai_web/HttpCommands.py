@@ -7,7 +7,8 @@ from cryptography.exceptions import InvalidSignature
 
 logger = logging.getLogger(__name__)
 
-CONST_MAX_TIMEOUT_HTTP = 300
+CONST_MAX_TIMEOUT_HTTP = 270
+CONST_DEFAUT_TIMEOUT_HTTP = 60
 
 
 async def handle_post_inscrire(server, request):
@@ -15,7 +16,17 @@ async def handle_post_inscrire(server, request):
         commande = await request.json()
         logger.debug("handle_post_inscrire commande recue : %s" % json.dumps(commande, indent=2))
 
-        # Valider la commande
+        # Valider le contenu
+        try:
+            commande['user_id']
+            commande['uuid_appareil']
+            commande['csr']
+        except KeyError:
+            reponse = {'ok': False, 'err': 'Params manquants'}
+            reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(reponse)
+            return web.json_response(status=400)
+
+        # Valider signature
         etat = server.etat_senseurspassifs
         await etat.validateur_message.verifier(commande)
         logger.debug("handle_post_inscrire Resultat validation OK")
@@ -24,7 +35,11 @@ async def handle_post_inscrire(server, request):
         try:
             reponse = await server.message_handler.demande_certificat(commande)
             reponse_parsed = reponse.parsed
-            return web.json_response(reponse_parsed)  # Reponse externe, code http 200
+            if reponse_parsed.get('certificat') or reponse_parsed.get('challenge'):
+                return web.json_response(reponse_parsed)  # Reponse externe, code http 200
+            else:
+                # Timeout (commande inscription sans certificat/challenge)
+                reponse = {'ok': False}
         except asyncio.TimeoutError:
             reponse = {'ok': False, 'err': 'Timeout'}
 
@@ -60,11 +75,11 @@ async def handle_post_poll(server, request):
         correlation = await server.message_handler.enregistrer_appareil(enveloppe)
 
         try:
-            timeout_http = commande['timeout_http']
+            timeout_http = commande['http_timeout']
             if timeout_http < 0:
                 timeout_http = 0
             elif timeout_http > CONST_MAX_TIMEOUT_HTTP:
-                timeout_http = CONST_MAX_TIMEOUT_HTTP
+                timeout_http = CONST_DEFAUT_TIMEOUT_HTTP
         except KeyError:
             timeout_http = CONST_MAX_TIMEOUT_HTTP  # Par defaut, 60 secondes
 

@@ -59,6 +59,10 @@ class WebServer:
 
     async def entretien(self):
         self.__logger.debug('Entretien')
+        try:
+            await self.message_handler.entretien()
+        except Exception:
+            self.__logger.exception("Erreur entretien message_handler")
 
     async def run(self, stop_event: Optional[Event] = None):
         if stop_event is not None:
