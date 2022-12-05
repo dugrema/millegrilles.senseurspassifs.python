@@ -69,9 +69,9 @@ async def handle_post_poll(server, request):
             return web.json_response(status=403)
 
         # Emettre l'etat de l'appareil (une lecture)
-        uuid_appareil = enveloppe.subject_common_name
-        lectures_senseurs = commande['lectures_senseurs']
-        await server.transmettre_lecture(uuid_appareil, user_id, lectures_senseurs)
+        # uuid_appareil = enveloppe.subject_common_name
+        # lectures_senseurs = commande['lectures_senseurs']
+        await server.transmettre_lecture(commande)
 
         correlation = await server.message_handler.enregistrer_appareil(enveloppe)
 
