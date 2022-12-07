@@ -75,7 +75,22 @@ async def handle_post_poll(server, request):
         # lectures_senseurs = commande['lectures_senseurs']
         await server.transmettre_lecture(commande)
 
-        correlation = await server.message_handler.enregistrer_appareil(enveloppe)
+        try:
+            senseurs = commande['senseurs']
+        except KeyError:
+            senseurs = None
+
+        correlation = await server.message_handler.enregistrer_appareil(enveloppe, senseurs)
+
+        # Verifier si on a une lecture d'appareils en attente
+        lectures_pending = correlation.take_lectures_pending()
+        if lectures_pending is not None and correlation.is_message_pending is False:
+            # Retourner les lectures en attente
+            reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(
+                {'ok': True, 'lectures_senseurs': lectures_pending},
+                action='lectures_senseurs'
+            )
+            return web.json_response(reponse)
 
         try:
             timeout_http = commande['http_timeout']

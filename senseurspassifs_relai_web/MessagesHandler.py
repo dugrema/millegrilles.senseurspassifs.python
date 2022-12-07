@@ -31,6 +31,10 @@ class CorrelationHook:
     def expire(self):
         return datetime.datetime.utcnow() - self.__derniere_activite > EXPIRATION_REQUETE_CERTIFICAT
 
+    @property
+    def is_message_pending(self):
+        return not self.__reponse.empty()
+
     def put_message(self, message: MessageWrapper):
         try:
             self.__reponse.put_nowait(message)
@@ -58,6 +62,8 @@ class CorrelationAppareil(CorrelationHook):
         super().__init__()
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self.__certificat = certificat
+        self.__senseurs_externes: Optional[list] = None
+        self.__lectures_pending = dict()
 
     @property
     def uuid_appareil(self):
@@ -67,6 +73,12 @@ class CorrelationAppareil(CorrelationHook):
     def user_id(self):
         return self.__certificat.get_user_id
 
+    def take_lectures_pending(self):
+        if len(self.__lectures_pending) > 0:
+            lectures = self.__lectures_pending
+            self.__lectures_pending = dict()
+            return lectures
+
     def recevoir_lecture(self, message: MessageWrapper):
         parsed = message.parsed
         uuid_appareil = parsed['uuid_appareil']
@@ -74,8 +86,22 @@ class CorrelationAppareil(CorrelationHook):
             pass  # Skip, ce sont des lectures internes de l'appareil
         else:
             # Verifier si on veut des lectures de cet appareil
-            # TODO
-            pass
+            if self.__senseurs_externes is not None:
+                for senseur_externe in self.__senseurs_externes:
+                    uuid_appareil_externe, nom_senseur = senseur_externe.split(':')
+                    if uuid_appareil == uuid_appareil_externe:
+                        try:
+                            lectures = self.__lectures_pending[uuid_appareil]
+                        except KeyError:
+                            lectures = dict()
+                            self.__lectures_pending[uuid_appareil] = lectures
+                        try:
+                            lectures[nom_senseur] = parsed['senseurs'][nom_senseur]
+                        except KeyError:
+                            pass  # Senseur sans lecture/absent
+
+    def set_senseurs_externes(self, senseurs: Optional[list]):
+        self.__senseurs_externes = senseurs
 
 
 class CorrelationRequeteCertificat(CorrelationHook):
@@ -199,7 +225,7 @@ class AppareilMessageHandler:
 
         return await requete.get_reponse(timeout=60)
 
-    async def enregistrer_appareil(self, certificat: EnveloppeCertificat) -> CorrelationAppareil:
+    async def enregistrer_appareil(self, certificat: EnveloppeCertificat, senseurs: Optional[list] = None) -> CorrelationAppareil:
         fingerprint = certificat.fingerprint
 
         appareil = self.__appareils.get(fingerprint)
@@ -208,6 +234,9 @@ class AppareilMessageHandler:
             self.__appareils[fingerprint] = appareil
 
         appareil.touch()
+
+        if senseurs is not None:
+            appareil.set_senseurs_externes(senseurs)
 
         return appareil
 
