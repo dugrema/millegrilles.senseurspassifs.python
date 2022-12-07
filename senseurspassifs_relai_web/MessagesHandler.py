@@ -3,7 +3,7 @@ import asyncio
 import datetime
 import logging
 
-from typing import Optional
+from typing import Optional, Union
 
 from millegrilles_messages.messages import Constantes
 
@@ -35,7 +35,7 @@ class CorrelationHook:
     def is_message_pending(self):
         return not self.__reponse.empty()
 
-    def put_message(self, message: MessageWrapper):
+    def put_message(self, message: Union[dict, MessageWrapper]):
         try:
             self.__reponse.put_nowait(message)
         except asyncio.QueueFull:
@@ -99,6 +99,16 @@ class CorrelationAppareil(CorrelationHook):
                             lectures[nom_senseur] = parsed['senseurs'][nom_senseur]
                         except KeyError:
                             pass  # Senseur sans lecture/absent
+
+                if len(self.__lectures_pending) > 0 and self.is_message_pending is False:
+                    lectures_pending = self.take_lectures_pending()
+                    # Aucun message en attente, retourner les lectures immediatement
+                    message = {
+                        'ok': True,
+                        'lectures_senseurs': lectures_pending,
+                        '_action': 'lectures_senseurs',
+                    }
+                    self.put_message(message)
 
     def set_senseurs_externes(self, senseurs: Optional[list]):
         self.__senseurs_externes = senseurs

@@ -6,6 +6,7 @@ from aiohttp import web
 from cryptography.exceptions import InvalidSignature
 
 from millegrilles_messages.messages import Constantes
+from millegrilles_messages.messages.MessagesModule import MessageWrapper
 
 logger = logging.getLogger(__name__)
 
@@ -102,8 +103,11 @@ async def handle_post_poll(server, request):
             timeout_http = CONST_MAX_TIMEOUT_HTTP  # Par defaut, 60 secondes
 
         try:
-            reponse_wrappee = await correlation.get_reponse(timeout_http)
-            reponse = reponse_wrappee.parsed
+            reponse = await correlation.get_reponse(timeout_http)
+            if isinstance(reponse, MessageWrapper):
+                reponse = reponse.parsed
+            elif isinstance(reponse, dict):
+                reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(reponse, action=reponse['_action'])
         except asyncio.TimeoutError:
             reponse = {'ok': False, 'err': 'Timeout'}
             reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(reponse)
