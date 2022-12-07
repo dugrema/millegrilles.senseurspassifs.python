@@ -59,6 +59,24 @@ class CorrelationAppareil(CorrelationHook):
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self.__certificat = certificat
 
+    @property
+    def uuid_appareil(self):
+        return self.__certificat.subject_common_name
+
+    @property
+    def user_id(self):
+        return self.__certificat.get_user_id
+
+    def recevoir_lecture(self, message: MessageWrapper):
+        parsed = message.parsed
+        uuid_appareil = parsed['uuid_appareil']
+        if self.uuid_appareil == uuid_appareil:
+            pass  # Skip, ce sont des lectures internes de l'appareil
+        else:
+            # Verifier si on veut des lectures de cet appareil
+            # TODO
+            pass
+
 
 class CorrelationRequeteCertificat(CorrelationHook):
 
@@ -119,6 +137,24 @@ class AppareilMessageHandler:
             return
         except KeyError:
             pass
+
+        action = message.routing_key.split('.').pop()
+        user_id = message.parsed['en-tete']['partition']
+
+        if action == 'lectureConfirmee':
+            # Permettre a chaque appareil de l'usager de recevoir la lecture
+            for app in self.__appareils.values():
+                if app.user_id == user_id:
+                    app.recevoir_lecture(message)
+        elif action in ['evenementMajDisplays']:
+            try:
+                uuid_appareil = message.parsed['uuid_appareil']
+                for app in self.__appareils.values():
+                    if app.uuid_appareil == uuid_appareil and app.user_id == user_id:
+                        app.put_message(message)
+                        return
+            except KeyError:
+                pass
 
         self.__logger.warning("Message MQ sans match appareil")
 

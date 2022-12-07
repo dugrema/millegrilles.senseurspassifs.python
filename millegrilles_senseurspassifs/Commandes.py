@@ -58,6 +58,14 @@ class CommandHandler:
             #             return await self.sauvegarder_fiche_publique(message)
             if routing_key in self.__routing_keys_modules:
                 return await self._modules_handler.recevoir_confirmation_lecture(message)
+            else:
+                routing_key_generic = routing_key.split('.')
+                if len(routing_key_generic) == 4:
+                    routing_key_generic[2] = '*'
+                    routing_key_generic = '.'.join(routing_key_generic)
+                    if routing_key_generic in self.__routing_keys_modules:
+                        return await self._modules_handler.recevoir_confirmation_lecture(message)
+
 
             if reponse is None:
                 reponse = {'ok': False, 'err': 'Commande inconnue ou acces refuse'}
