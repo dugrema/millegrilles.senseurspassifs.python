@@ -5,6 +5,8 @@ import logging
 from aiohttp import web
 from cryptography.exceptions import InvalidSignature
 
+from millegrilles_messages.messages import Constantes
+
 logger = logging.getLogger(__name__)
 
 CONST_MAX_TIMEOUT_HTTP = 270
@@ -101,3 +103,42 @@ async def handle_post_poll(server, request):
 async def handle_post_commande(server, request):
     print("Commande recue")
     return web.Response(status=202)
+
+
+async def handle_post_requete(server, request):
+    try:
+        requete = await request.json()
+        logger.debug("handle_post_request Etat recu %s" % requete)
+
+        etat = server.etat_senseurspassifs
+        enveloppe = await etat.validateur_message.verifier(requete)
+        user_id = enveloppe.get_user_id
+
+        # S'assurer d'avoir un appareil de role senseurspassifs
+        if user_id is None or 'senseurspassifs' not in enveloppe.get_roles:
+            return web.json_response(status=403)
+
+        # Touch (conserver presence appareil)
+        await server.message_handler.enregistrer_appareil(enveloppe)
+
+        # Emettre la requete
+        entete = requete['en-tete']
+        domaine = entete['domaine']
+        action = entete['action']
+        partition = entete.get('partition')
+        exchange = Constantes.SECURITE_PRIVE
+
+        producer = etat.producer
+
+        try:
+            reponse = await producer.executer_requete(requete, domaine, action, exchange, partition, noformat=True)
+            reponse = reponse.parsed
+        except asyncio.TimeoutError:
+            reponse = {'ok': False, 'err': 'Timeout'}
+            reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(reponse)
+
+        return web.json_response(reponse)
+
+    except Exception as e:
+        logger.error("handle_post_poll Erreur %s" % str(e))
+        return web.json_response(status=500)
