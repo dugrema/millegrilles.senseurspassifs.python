@@ -119,6 +119,56 @@ async def handle_post_poll(server, request):
         return web.json_response(status=500)
 
 
+async def handle_post_renouveler(server, request):
+    """
+    Renouveler un certificat d'appareil (pas expire)
+    :param server:
+    :param request:
+    :return:
+    """
+    try:
+        commande = await request.json()
+        logger.debug("handle_post_renouveler Demande recue %s" % commande)
+
+        etat = server.etat_senseurspassifs
+
+        # Verifier - s'assure que la signature est valide et certificat est encore actif
+        enveloppe = await etat.validateur_message.verifier(commande)
+        user_id = enveloppe.get_user_id
+
+        # S'assurer d'avoir un appareil de role senseurspassifs
+        if user_id is None or 'senseurspassifs' not in enveloppe.get_roles:
+            return web.json_response(status=403)
+
+        entete = commande['en-tete']
+        try:
+            if entete['action'] != 'signerAppareil' or entete['domaine'] != 'SenseursPassifs':
+                reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(
+                    {'ok': False, 'err': 'Mauvais domaine/action'})
+                return web.json_response(data=reponse, status=400)
+        except KeyError:
+            reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(
+                {'ok': False, 'err': 'Mauvais domaine/action'})
+            return web.json_response(data=reponse, status=400)
+
+        # Faire le relai de la commande - CorePki/certissuer s'occupent des renouvellements de certs actifs
+        producer = etat.producer
+
+        try:
+            reponse = await producer.executer_commande(
+                commande, 'SenseursPassifs', 'signerAppareil', Constantes.SECURITE_PRIVE, noformat=True)
+            reponse = reponse.parsed
+        except asyncio.TimeoutError:
+            reponse = {'ok': False, 'err': 'Timeout'}
+            reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(reponse)
+
+        return web.json_response(data=reponse, status=200)
+
+    except Exception as e:
+        logger.error("handle_post_poll Erreur %s" % str(e))
+        return web.json_response(status=500)
+
+
 async def handle_post_commande(server, request):
     print("Commande recue")
     return web.Response(status=202)

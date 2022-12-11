@@ -54,6 +54,7 @@ class WebServer:
             web.get('/senseurspassifs_relai/test', self.handle_test),
             web.post('/senseurspassifs_relai/inscrire', self.handle_post_inscrire),
             web.post('/senseurspassifs_relai/poll', self.handle_post_poll),
+            web.post('/senseurspassifs_relai/renouveler', self.handle_post_renouveler),
             web.post('/senseurspassifs_relai/commande', self.handle_post_commande),
             web.post('/senseurspassifs_relai/requete', self.handle_post_requete),
         ])
@@ -96,6 +97,9 @@ class WebServer:
 
     async def handle_post_poll(self, request):
         return await HttpCommands.handle_post_poll(self, request)
+
+    async def handle_post_renouveler(self, request):
+        return await HttpCommands.handle_post_renouveler(self, request)
 
     async def handle_post_commande(self, request):
         return await HttpCommands.handle_post_commande(self, request)
