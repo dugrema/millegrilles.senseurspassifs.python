@@ -2,11 +2,11 @@ import argparse
 import logging
 
 from millegrilles_senseurspassifs.EtatSenseursPassifs import EtatSenseursPassifs
-from millegrilles_senseurspassifs.SenseursModule import SenseurModuleHandler
+from millegrilles_senseurspassifs.AppareilModule import AppareilHandler
 from millegrilles_senseurspassifs.AffichagePassif import ModuleAfficheLignes
 
 
-class ModuleHandlerBase(SenseurModuleHandler):
+class AppareilHandlerBase(AppareilHandler):
 
     def __init__(self, etat_senseurspassifs: EtatSenseursPassifs):
         super().__init__(etat_senseurspassifs)

@@ -8,10 +8,10 @@ from typing import Optional
 
 from millegrilles_senseurspassifs.AffichagePassif import ModuleAfficheLignes
 from millegrilles_senseurspassifs.EtatSenseursPassifs import EtatSenseursPassifs
-from millegrilles_senseurspassifs.SenseursModule import SenseurModuleHandler, SenseurModuleProducerAbstract
+from millegrilles_senseurspassifs.AppareilModule import AppareilHandler, SenseurModuleProducerAbstract
 
 
-class RpiModuleHandler(SenseurModuleHandler):
+class RpiModuleHandler(AppareilHandler):
 
     def __init__(self, etat_senseurspassifs: EtatSenseursPassifs):
         super().__init__(etat_senseurspassifs)
@@ -39,7 +39,7 @@ class RpiModuleHandler(SenseurModuleHandler):
 
 class AffichageLCD2Lignes(ModuleAfficheLignes):
 
-    def __init__(self, handler: SenseurModuleHandler, etat_senseurspassifs: EtatSenseursPassifs, no_senseur: str,
+    def __init__(self, handler: AppareilHandler, etat_senseurspassifs: EtatSenseursPassifs, no_senseur: str,
                  timezone_horloge: Optional[str] = None):
         super().__init__(handler, etat_senseurspassifs, no_senseur, timezone_horloge)
 
@@ -115,7 +115,7 @@ class AffichageLCD2Lignes(ModuleAfficheLignes):
 
 class SenseurDHT(SenseurModuleProducerAbstract):
 
-    def __init__(self, handler: SenseurModuleHandler, etat_senseurspassifs: EtatSenseursPassifs, pin: int, lecture_callback):
+    def __init__(self, handler: AppareilHandler, etat_senseurspassifs: EtatSenseursPassifs, pin: int, lecture_callback):
         instance_id = etat_senseurspassifs.instance_id
         no_senseur = '%s_DHT' % instance_id
         super().__init__(handler, etat_senseurspassifs, no_senseur, lecture_callback)
@@ -143,7 +143,7 @@ class SenseurDHT(SenseurModuleProducerAbstract):
 
 class SenseurRF24(SenseurModuleProducerAbstract):
 
-    def __init__(self, handler: SenseurModuleHandler, etat_senseurspassifs: EtatSenseursPassifs, lecture_callback, environnement='prod'):
+    def __init__(self, handler: AppareilHandler, etat_senseurspassifs: EtatSenseursPassifs, lecture_callback, environnement='prod'):
         instance_id = etat_senseurspassifs.instance_id
         no_senseur = '%s_RF24' % instance_id
         super().__init__(handler, etat_senseurspassifs, no_senseur, lecture_callback)

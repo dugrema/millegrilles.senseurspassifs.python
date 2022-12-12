@@ -4,6 +4,8 @@ import datetime
 import io
 import json
 import logging
+import multibase
+import os
 import random
 
 from asyncio import Event, TimeoutError
@@ -11,16 +13,28 @@ from typing import Optional
 from os import path, makedirs
 
 from millegrilles_messages.messages import Constantes
+from millegrilles_messages.messages.CleCertificat import CleCertificat
+from millegrilles_messages.messages.FormatteurMessages import SignateurTransactionSimple, FormatteurMessageMilleGrilles
 from millegrilles_messages.messages.MessagesModule import MessageWrapper, MessageProducerFormatteur
+from millegrilles_messages.certificats.Generes import CleCsrGenere
 from millegrilles_senseurspassifs.EtatSenseursPassifs import EtatSenseursPassifs
 from millegrilles_senseurspassifs import Constantes as ConstantesSenseursPassifs
 
 
-class SenseurModuleHandler:
+class AppareilHandler:
+    """
+    Appareil represente dans SenseursPassifs.
+    Possede son propre certificat d'appareil pour produire les evenements de lecture.
+    """
 
     def __init__(self, etat_senseurspassifs: EtatSenseursPassifs):
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self._etat_senseurspassifs = etat_senseurspassifs
+
+        # Formatteur des messages de l'appareil
+        self.__formatteur_message_appareil: Optional[FormatteurMessageMilleGrilles] = None
+        self.__cle_csr: Optional[CleCsrGenere] = None
+        self.__cle_certificat_appareil: Optional[CleCertificat] = None
 
         self._modules_consumer = list()
         self._modules_producer = list()
@@ -43,17 +57,100 @@ class SenseurModuleHandler:
         path_logs = self._etat_senseurspassifs.configuration.lecture_log_directory
         makedirs(path_logs, exist_ok=True)
 
-        path_fichier_log = path.join(path_logs, 'senseurs.jsonl')
+        # path_fichier_log = path.join(path_logs, 'senseurs.jsonl')
 
-        if self.__sink_fichier is not None:
-            self.__sink_fichier.close()
-        sink = open(path_fichier_log, 'a')
-        self.__sink_fichier = sink
+        # if self.__sink_fichier is not None:
+        #     self.__sink_fichier.close()
+        # sink = open(path_fichier_log, 'a')
+        # self.__sink_fichier = sink
+
+        if self.__cle_certificat_appareil is None:
+            await self.preparer_certificat_appareil()
+
+    async def preparer_certificat_appareil(self):
+        configuration = self._etat_senseurspassifs.configuration
+        path_cert_appareil = configuration.cert_appareil_pem_path
+        path_key_appareil = configuration.key_appareil_pem_path
+
+        try:
+            cle_certificat = CleCertificat.from_files(path_key_appareil, path_cert_appareil)
+
+            # Valider le certificat (ok si actif)
+            await self._etat_senseurspassifs.valider_certificat(cle_certificat.enveloppe.chaine_pem)
+            self.__cle_certificat_appareil = cle_certificat
+        except Exception:
+            # Certificat absent ou invalide, cleanup
+            try:
+                os.remove(path_cert_appareil)
+            except FileNotFoundError:
+                pass
+            try:
+                os.remove(path_key_appareil)
+            except FileNotFoundError:
+                pass
+
+            try:
+                await self.generer_certificat_appareil()
+            except AttributeError:
+                # Pas de cert et producer n'est pas pret
+                self.__logger.warning("Aucun certificat d'appareil disponible - doit etre genere")
+
+    async def generer_certificat_appareil(self):
+        user_id = self._etat_senseurspassifs.user_id
+        if user_id is None:
+            raise ValueError("user_id n'est pas configure")
+
+        # Charger information de l'instance
+        enveloppe_relai = self._etat_senseurspassifs.clecertificat.enveloppe
+        instance_id = enveloppe_relai.subject_common_name
+        if self.__cle_csr is None:
+            idmg = enveloppe_relai.idmg
+            self.__cle_csr = CleCsrGenere.build(instance_id, idmg)
+
+        # Generer CSR
+        csr_pem = self.__cle_csr.get_pem_csr()
+        cle_publique = self.__cle_csr.cle_publique
+        cle_publique = multibase.encode('base64', cle_publique).decode('utf-8')
+
+        producer = self._etat_senseurspassifs.producer
+        await producer.producer_pret().wait()
+
+        commande = {
+            'csr': csr_pem,
+            'uuid_appareil': instance_id,
+            'user_id': user_id,
+            'instance_id': instance_id,
+            'cle_publique': cle_publique,
+        }
+        try:
+            reponse = await producer.executer_commande(
+                commande, 'SenseursPassifs', 'inscrireAppareil', Constantes.SECURITE_PRIVE)
+            reponse_parsed = reponse.parsed
+            if reponse_parsed.get('certificat') or reponse_parsed.get('challenge'):
+                raise NotImplementedError('todo')
+        except Exception:
+            # Attendre la reponse - raise timeout
+            self.__logger.exception("Erreur commande inscrireAppareil")
+
+    async def entretien(self):
+        await asyncio.sleep(5)
+        self.__logger.debug("Demarrage entretien")
+
+        while self._etat_senseurspassifs.stop_event.is_set() is False:
+
+            if self.__cle_certificat_appareil is None:
+                try:
+                    await self.preparer_certificat_appareil()
+                except Exception:
+                    self.__logger.warning("Erreur creation certificat")
+
+            await asyncio.wait_for(self._etat_senseurspassifs.stop_event.wait(), 30)
 
     async def run(self):
         # Creer une liste de tasks pour executer tous les modules
         tasks = [
-            asyncio.create_task(self.traitement_lectures(), name="traitement_lectures")
+            asyncio.create_task(self.traitement_lectures(), name="traitement_lectures"),
+            asyncio.create_task(self.entretien(), name="entretien"),
         ]
 
         if len(self._modules_consumer) == 0 and len(self._modules_producer) == 0:
@@ -93,17 +190,21 @@ class SenseurModuleHandler:
             message = await self.__q_lectures.get()
             self.__logger.debug("traitement_lectures %s" % message)
 
-            if message.get('interne') is True and self.__sink_fichier is not None:
+            # if message.get('interne') is True and self.__sink_fichier is not None:
+            if message.get('interne') is True:
                 # Sauvegarder lecture
                 message_lectures = message['message']
                 # senseurs = message_lectures['senseurs']
 
-                json.dump(message_lectures, self.__sink_fichier)
-                self.__sink_fichier.write('\n')  # Terminer la ligne
-                self.__sink_fichier.flush()
+                # json.dump(message_lectures, self.__sink_fichier)
+                # self.__sink_fichier.write('\n')  # Terminer la ligne
+                # self.__sink_fichier.flush()
 
                 # Transmettre sur MQ
-                await self.transmettre_lecture(message_lectures)
+                if self.__formatteur_message_appareil is not None:
+                    await self.transmettre_lecture(message_lectures)
+                else:
+                    self.__logger.info("Formatteur message pas pret, DROP message")
 
             elif message.get('confirmation') is True:
                 pass  # Rien a faire
@@ -152,11 +253,12 @@ class SenseurModuleHandler:
             self.__logger.debug("Producer MQ pas pret, abort transmission")
             return
 
-        partition = self._etat_senseurspassifs.partition
+        message_signe = self.__formatteur_message_appareil.signer_message(message, )
 
-        await self.producer.emettre_evenement(message, ConstantesSenseursPassifs.DOMAINE_SENSEURSPASSIFS,
+        await self.producer.emettre_commande(
+            message, ConstantesSenseursPassifs.DOMAINE_SENSEURSPASSIFS,
                                               ConstantesSenseursPassifs.EVENEMENT_DOMAINE_LECTURE,
-                                              partition=partition, exchanges=[Constantes.SECURITE_PRIVE])
+                                              exchanges=[Constantes.SECURITE_PRIVE])
 
     @property
     def producer(self):
@@ -176,7 +278,7 @@ class SenseurModuleProducerAbstract:
     Module de production de lectures
     """
 
-    def __init__(self, handler: SenseurModuleHandler, etat_senseurspassifs: EtatSenseursPassifs, no_senseur: str, lecture_callback):
+    def __init__(self, handler: AppareilHandler, etat_senseurspassifs: EtatSenseursPassifs, no_senseur: str, lecture_callback):
         self._handler = handler
         self._etat_senseurspassifs = etat_senseurspassifs
         self._no_senseur = no_senseur
@@ -210,7 +312,7 @@ class SenseurModuleConsumerAbstract:
     Module de reception de lectures (e.g. affichage LCD)
     """
 
-    def __init__(self, handler: SenseurModuleHandler, etat_senseurspassifs: EtatSenseursPassifs, no_senseur: str):
+    def __init__(self, handler: AppareilHandler, etat_senseurspassifs: EtatSenseursPassifs, no_senseur: str):
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self._handler = handler
         self._etat_senseurspassifs = etat_senseurspassifs
@@ -291,7 +393,7 @@ class DummyProducer(SenseurModuleProducerAbstract):
     Exemple de producer. Utilise --dummysenseur pour activer sur command line.
     """
 
-    def __init__(self, handler: SenseurModuleHandler, etat_senseurspassifs: EtatSenseursPassifs, no_senseur: str, lecture_callback):
+    def __init__(self, handler: AppareilHandler, etat_senseurspassifs: EtatSenseursPassifs, no_senseur: str, lecture_callback):
         super().__init__(handler, etat_senseurspassifs, no_senseur, lecture_callback)
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
 
@@ -332,7 +434,7 @@ class DummyConsumer(SenseurModuleConsumerAbstract):
     Exemple de consumer. Utilise --dummylcd pour activer sur command line.
     """
 
-    def __init__(self, handler: SenseurModuleHandler, etat_senseurspassifs, no_senseur: str):
+    def __init__(self, handler: AppareilHandler, etat_senseurspassifs, no_senseur: str):
         super().__init__(handler, etat_senseurspassifs, no_senseur)
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
 

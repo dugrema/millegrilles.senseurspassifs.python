@@ -12,12 +12,12 @@ from millegrilles_messages.messages import Constantes
 from millegrilles_messages.messages.MessagesModule import MessageProducerFormatteur
 from millegrilles_senseurspassifs import Constantes as ConstantesSenseursPassifs
 from millegrilles_senseurspassifs.EtatSenseursPassifs import EtatSenseursPassifs
-from millegrilles_senseurspassifs.SenseursModule import SenseurModuleHandler, SenseurModuleConsumerAbstract
+from millegrilles_senseurspassifs.AppareilModule import AppareilHandler, SenseurModuleConsumerAbstract
 
 
 class ModuleCollecteSenseurs(SenseurModuleConsumerAbstract):
 
-    def __init__(self, handler: SenseurModuleHandler, etat_senseurspassifs: EtatSenseursPassifs, no_senseur: str):
+    def __init__(self, handler: AppareilHandler, etat_senseurspassifs: EtatSenseursPassifs, no_senseur: str):
         super().__init__(handler, etat_senseurspassifs, no_senseur)
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self.__uuid_senseurs = list()
@@ -141,7 +141,7 @@ class ModuleAfficheLignes(ModuleCollecteSenseurs):
     Genere des lignes/pages a afficher pour le contenu des senseurs
     """
 
-    def __init__(self, handler: SenseurModuleHandler, etat_senseurspassifs: EtatSenseursPassifs, no_senseur: str,
+    def __init__(self, handler: AppareilHandler, etat_senseurspassifs: EtatSenseursPassifs, no_senseur: str,
                  timezone_horloge: Optional[str] = None):
         super().__init__(handler, etat_senseurspassifs, no_senseur)
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)

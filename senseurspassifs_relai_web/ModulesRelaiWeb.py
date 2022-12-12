@@ -2,12 +2,12 @@ import argparse
 import logging
 
 from millegrilles_senseurspassifs.EtatSenseursPassifs import EtatSenseursPassifs
-from millegrilles_senseurspassifs.SenseursModule import SenseurModuleHandler
+from millegrilles_senseurspassifs.AppareilModule import AppareilHandler
 from senseurspassifs_relai_web.ServeurWeb import ModuleSenseurWebServer
 from millegrilles_messages.messages.MessagesModule import MessageWrapper
 
 
-class RelaiWebModuleHandler(SenseurModuleHandler):
+class RelaiWebModuleHandler(AppareilHandler):
 
     def __init__(self, etat_senseurspassifs: EtatSenseursPassifs):
         super().__init__(etat_senseurspassifs)

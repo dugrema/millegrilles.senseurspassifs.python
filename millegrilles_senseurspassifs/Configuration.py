@@ -19,8 +19,12 @@ class ConfigurationSenseursPassifs:
     def __init__(self):
         self.config_path = '/var/opt/millegrilles/configuration/config.json'
         self.ca_pem_path = '/var/opt/millegrilles/configuration/pki.millegrille.cert'
-        self.cert_pem_path = '/var/opt/millegrilles/secrets_partages/pki.certificat_senseurspassifs_hub.cert'
-        self.key_pem_path = '/var/opt/millegrilles/secrets_partages/pki.certificat_senseurspassifs_hub.cle'
+        self.cert_pem_path = '/var/opt/millegrilles/secrets_partages/pki.certificat_senseurspassifs_relai.cert'
+        self.key_pem_path = '/var/opt/millegrilles/secrets_partages/pki.certificat_senseurspassifs_relai.cle'
+        self.config_senseurspassifs_path = '/var/opt/millegrilles/configuration/senseurspassifs_relai.json'
+
+        self.cert_appareil_pem_path = '/var/opt/millegrilles/secrets_partages/senseurspassifs_relai.appareil.cert'
+        self.key_appareil_pem_path = '/var/opt/millegrilles/secrets_partages/senseurspassifs_relai.appareil.cle'
 
         self.senseurspassifs_path = '/var/opt/millegrilles/senseurspassifs'
         self.lecture_log_directory = '/var/opt/millegrilles/senseurspassifs/log'
@@ -55,6 +59,9 @@ class ConfigurationSenseursPassifs:
         self.ca_pem_path = dict_params.get(Constantes.ENV_CA_PEM) or self.ca_pem_path
         self.cert_pem_path = dict_params.get(Constantes.ENV_CERT_PEM) or self.cert_pem_path
         self.key_pem_path = dict_params.get(Constantes.ENV_KEY_PEM) or self.key_pem_path
+        self.config_senseurspassifs_path = dict_params.get(Constantes.ENV_CONFIG_SENSEURSPASSIFS) or self.config_senseurspassifs_path
+        self.cert_appareil_pem_path = dict_params.get(Constantes.ENV_CERT_APPAREIL_PEM) or self.cert_appareil_pem_path
+        self.key_appareil_pem_path = dict_params.get(Constantes.ENV_KEY_APPAREIL_PEM) or self.key_appareil_pem_path
         self.mq_host = dict_params.get(Constantes.ENV_MQ_HOSTNAME) or self.mq_host
         try:
             self.mq_port = int(dict_params.get(Constantes.ENV_MQ_PORT) or self.mq_port)

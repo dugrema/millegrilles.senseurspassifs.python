@@ -27,6 +27,7 @@ class EtatSenseursPassifs:
         self.__mq_port: Optional[int] = None
         self.__clecertificat: Optional[CleCertificat] = None
         self.__certificat_millegrille: Optional[EnveloppeCertificat] = None
+        self.__user_id: Optional[str] = None
 
         self.__listeners_actions = list()
 
@@ -34,12 +35,19 @@ class EtatSenseursPassifs:
         self.__validateur_certificats: Optional[ValidateurCertificatCache] = None
         self.__validateur_message: Optional[ValidateurMessageControleur] = None
 
-        # self.__stop_event: Optional[Event] = None
+        self.__stop_event: Optional[Event] = None
         self.__producer: Optional[MessageProducerFormatteur] = None
         self.__partition: Optional[str] = None
 
     async def reload_configuration(self):
         self.__logger.info("Reload configuration sur disque ou dans docker")
+
+        if self.__stop_event is None:
+            self.__stop_event = Event()
+
+        config_senseurspassifs_path = self.__configuration.config_senseurspassifs_path
+        with open(config_senseurspassifs_path, 'r') as fichier:
+            self.__user_id = json.load(fichier)['user_id']
 
         config_path = self.__configuration.config_path
         with open(config_path, 'r') as fichier:
@@ -91,6 +99,9 @@ class EtatSenseursPassifs:
             self.__logger.warning("Le certificat local est expire")
             return True
 
+    async def valider_certificat(self, certificat: list[str]):
+        return await self.__validateur_certificats.valider(certificat)
+
     @property
     def configuration(self):
         return self.__configuration
@@ -132,3 +143,11 @@ class EtatSenseursPassifs:
     @property
     def validateur_message(self):
         return self.__validateur_message
+
+    @property
+    def user_id(self) -> Optional[str]:
+        return self.__user_id
+
+    @property
+    def stop_event(self) -> Event:
+        return self.__stop_event

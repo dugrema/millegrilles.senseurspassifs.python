@@ -10,7 +10,7 @@ from millegrilles_messages.docker.Entretien import TacheEntretien
 from millegrilles_senseurspassifs.Configuration import ConfigurationSenseursPassifs
 from millegrilles_senseurspassifs.EtatSenseursPassifs import EtatSenseursPassifs
 from millegrilles_senseurspassifs.RabbitMQDao import RabbitMQDao
-from millegrilles_senseurspassifs.ModulesBase import ModuleHandlerBase
+from millegrilles_senseurspassifs.ModulesBase import AppareilHandlerBase
 from millegrilles_senseurspassifs.SenseursLogHandler import SenseursLogHandler
 from millegrilles_messages.messages.CleCertificat import CleCertificat
 
@@ -34,7 +34,7 @@ class ApplicationInstance:
 
     def init_module_handler(self):
         # return SenseurModuleHandler(self.__etat_senseurspassifs)
-        return ModuleHandlerBase(self._etat_senseurspassifs)
+        return AppareilHandlerBase(self._etat_senseurspassifs)
 
     def preparer_taches(self) -> list:
         taches = list()
