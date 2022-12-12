@@ -76,10 +76,18 @@ class AppareilHandler:
             cle_certificat = CleCertificat.from_files(path_key_appareil, path_cert_appareil)
 
             # Valider le certificat (ok si actif)
-            await self._etat_senseurspassifs.valider_certificat(cle_certificat.enveloppe.chaine_pem)
+            chaine_pem = cle_certificat.enveloppe.chaine_pem()
+            await self._etat_senseurspassifs.valider_certificat(chaine_pem)
             self.__cle_certificat_appareil = cle_certificat
-        except Exception:
+            self.__cle_csr = None  # Cleanup au besoin
+
+            idmg = cle_certificat.enveloppe.idmg
+            signateur_transactions = SignateurTransactionSimple(self.__cle_certificat_appareil)
+            self.__formatteur_message_appareil = FormatteurMessageMilleGrilles(idmg, signateur_transactions)
+
+        except Exception as e:
             # Certificat absent ou invalide, cleanup
+            self.__logger.exception("Certificat appareil absent ou invalide")
             try:
                 os.remove(path_cert_appareil)
             except FileNotFoundError:
@@ -103,8 +111,9 @@ class AppareilHandler:
         # Charger information de l'instance
         enveloppe_relai = self._etat_senseurspassifs.clecertificat.enveloppe
         instance_id = enveloppe_relai.subject_common_name
+        idmg = enveloppe_relai.idmg
+
         if self.__cle_csr is None:
-            idmg = enveloppe_relai.idmg
             self.__cle_csr = CleCsrGenere.build(instance_id, idmg)
 
         # Generer CSR
@@ -126,8 +135,30 @@ class AppareilHandler:
             reponse = await producer.executer_commande(
                 commande, 'SenseursPassifs', 'inscrireAppareil', Constantes.SECURITE_PRIVE)
             reponse_parsed = reponse.parsed
-            if reponse_parsed.get('certificat') or reponse_parsed.get('challenge'):
-                raise NotImplementedError('todo')
+
+            try:
+                certificat = reponse_parsed['certificat']
+            except KeyError:
+                return  # Certificat n'a pas ete recu
+
+            # Validation du certificat recu
+            cle_pem = self.__cle_csr.get_pem_cle()
+            cle_certificat_appareil = CleCertificat.from_pems(cle_pem, certificat)
+            if cle_certificat_appareil.cle_correspondent() is False:
+                self.__logger.warning("Cle appareil recue ne corresponde pas au certificat")
+                return
+
+            # Conserver cle et certificat
+            with open(self._etat_senseurspassifs.configuration.cert_appareil_pem_path, 'w') as fichier:
+                fichier.write(''.join(certificat))
+            with open(self._etat_senseurspassifs.configuration.key_appareil_pem_path, 'w') as fichier:
+                fichier.write(cle_pem)
+
+            self.__cle_csr = None
+            self.__cle_certificat_appareil = CleCertificat.from_pems(cle_pem, certificat)
+            signateur_transactions = SignateurTransactionSimple(self.__cle_certificat_appareil)
+            self.__formatteur_message_appareil = FormatteurMessageMilleGrilles(idmg, signateur_transactions)
+
         except Exception:
             # Attendre la reponse - raise timeout
             self.__logger.exception("Erreur commande inscrireAppareil")
@@ -144,7 +175,10 @@ class AppareilHandler:
                 except Exception:
                     self.__logger.warning("Erreur creation certificat")
 
-            await asyncio.wait_for(self._etat_senseurspassifs.stop_event.wait(), 30)
+            try:
+                await asyncio.wait_for(self._etat_senseurspassifs.stop_event.wait(), 30)
+            except asyncio.TimeoutError:
+                pass  # Ok
 
     async def run(self):
         # Creer une liste de tasks pour executer tous les modules
@@ -253,12 +287,29 @@ class AppareilHandler:
             self.__logger.debug("Producer MQ pas pret, abort transmission")
             return
 
-        message_signe = self.__formatteur_message_appareil.signer_message(message, )
+        message_reformatte = {
+            'uuid_appareil': message['instance_id'],
+            'lectures_senseurs': message['senseurs']
+        }
 
-        await self.producer.emettre_commande(
-            message, ConstantesSenseursPassifs.DOMAINE_SENSEURSPASSIFS,
-                                              ConstantesSenseursPassifs.EVENEMENT_DOMAINE_LECTURE,
-                                              exchanges=[Constantes.SECURITE_PRIVE])
+        message_signe, _ = self.__formatteur_message_appareil.signer_message(
+            message_reformatte,
+            domaine=ConstantesSenseursPassifs.DOMAINE_SENSEURSPASSIFS,
+            action=ConstantesSenseursPassifs.EVENEMENT_ETAT_APPAREIL,
+            ajouter_chaine_certs=True
+        )
+
+        message_enveloppe = {
+            'instance_id': message['instance_id'],
+            'lecture': message_signe,
+        }
+
+        await self.producer.emettre_evenement(
+            message_enveloppe,
+            ConstantesSenseursPassifs.ROLE_SENSEURSPASSIFS_RELAI,
+            ConstantesSenseursPassifs.EVENEMENT_DOMAINE_LECTURE,
+            exchanges=[Constantes.SECURITE_PRIVE]
+        )
 
     @property
     def producer(self):
