@@ -1,6 +1,8 @@
 import asyncio
+import datetime
 import json
 import logging
+import pytz
 
 from aiohttp import web
 from cryptography.exceptions import InvalidSignature
@@ -210,4 +212,30 @@ async def handle_post_requete(server, request):
 
     except Exception as e:
         logger.error("handle_post_poll Erreur %s" % str(e))
+        return web.json_response(status=500)
+
+
+async def handle_post_timeinfo(server, request):
+    try:
+        requete = await request.json()
+        reponse = {'ok': True}
+
+        timezone_str = None
+        try:
+            now = datetime.datetime.utcnow()
+            timezone_str = requete['timezone']
+            timezone_pytz = pytz.timezone(timezone_str)
+            offset = timezone_pytz.utcoffset(now)
+            offset_seconds = int(offset.total_seconds())
+            reponse['timezone_offset'] = offset_seconds
+        except pytz.exceptions.UnknownTimeZoneError:
+            logger.error("Timezone %s inconnue" % timezone_str)
+        except KeyError:
+            pass  # OK, pas de timezone
+
+        reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(reponse)
+        return web.json_response(reponse)
+
+    except Exception as e:
+        logger.error("handle_get_timeinfo Erreur %s" % str(e))
         return web.json_response(status=500)

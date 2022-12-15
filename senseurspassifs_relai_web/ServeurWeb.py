@@ -57,6 +57,7 @@ class WebServer:
             web.post('/senseurspassifs_relai/renouveler', self.handle_post_renouveler),
             web.post('/senseurspassifs_relai/commande', self.handle_post_commande),
             web.post('/senseurspassifs_relai/requete', self.handle_post_requete),
+            web.post('/senseurspassifs_relai/timeinfo',  self.handle_post_timeinfo)
         ])
 
     async def entretien(self):
@@ -106,6 +107,9 @@ class WebServer:
 
     async def handle_post_requete(self, request):
         return await HttpCommands.handle_post_requete(self, request)
+
+    async def handle_post_timeinfo(self, request):
+        return await HttpCommands.handle_post_timeinfo(self, request)
 
     async def transmettre_lecture(self, lecture: dict):
         producer = self.etat_senseurspassifs.producer
