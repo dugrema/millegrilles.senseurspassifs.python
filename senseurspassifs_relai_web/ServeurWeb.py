@@ -6,6 +6,7 @@ from aiohttp import web
 from asyncio import Event
 from asyncio.exceptions import TimeoutError
 from typing import Optional
+from websockets import serve, ConnectionClosedError, ConnectionClosedOK
 
 from senseurspassifs_relai_web import HttpCommands
 
@@ -141,15 +142,83 @@ class WebServer:
         )
 
 
+class ServeurWebSocket:
+
+    def __init__(self, etat_senseurspassifs: EtatSenseursPassifs):
+        self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
+        self.etat_senseurspassifs = etat_senseurspassifs
+        self.message_handler = AppareilMessageHandler(self.etat_senseurspassifs)
+
+        self.configuration = ConfigurationWeb()
+        self.__websocket = None
+        self.__stop_event: Optional[Event] = None
+
+        self.__ssl_context = None
+
+    def setup(self, configuration: Optional[dict] = None):
+        self._charger_configuration(configuration)
+
+        self.__ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        try:
+            self.__ssl_context.load_verify_locations(self.configuration.ca_pem_path)
+        except FileNotFoundError as e:
+            self.__logger.error("CA non trouve : %s" % self.configuration.ca_pem_path)
+            raise e
+
+        try:
+            self.__ssl_context.load_cert_chain(self.configuration.cert_pem_path, self.configuration.key_pem_path)
+        except FileNotFoundError as e:
+            self.__logger.error("Cert/cles non trouves : %s / %s" % (self.configuration.cert_pem_path, self.configuration.key_pem_path))
+            raise e
+
+    def _charger_configuration(self, configuration: Optional[dict] = None):
+        self.configuration.parse_config(configuration)
+
+    async def entretien(self):
+        self.__logger.debug('Entretien')
+        try:
+            await self.message_handler.entretien()
+        except Exception:
+            self.__logger.exception("Erreur entretien message_handler")
+
+    async def run(self, stop_event: Optional[Event] = None):
+        if stop_event is not None:
+            self.__stop_event = stop_event
+        else:
+            self.__stop_event = Event()
+
+        try:
+            async with serve(self.handle_client, "0.0.0.0", self.configuration.websocket_port, ssl=self.__ssl_context):
+                self.__logger.info("Websocket demarre")
+
+                while not self.__stop_event.is_set():
+                    await self.entretien()
+                    try:
+                        await asyncio.wait_for(self.__stop_event.wait(), 30)
+                    except TimeoutError:
+                        pass
+        finally:
+            self.__logger.info("Site arrete")
+
+    async def handle_client(self, websocket):
+        self.__logger.info("Connexion websocket %s" % websocket)
+        # await asyncio.gather(
+        #     echo(websocket),
+        #     send_updates(websocket)
+        # )
+
+
 class ModuleSenseurWebServer:
     """ Wrapper de module pour le web server """
 
     def __init__(self, etat_senseurspassifs: EtatSenseursPassifs):
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self.__web_server = WebServer(etat_senseurspassifs)
+        self.__websocket_server = ServeurWebSocket(etat_senseurspassifs)
 
     def setup(self, configuration: Optional[dict] = None):
         self.__web_server.setup(configuration)
+        self.__websocket_server.setup(configuration)
 
     def routing_keys(self) -> list:
         instance_id = self.__web_server.etat_senseurspassifs.instance_id
@@ -164,6 +233,7 @@ class ModuleSenseurWebServer:
         self.__logger.debug("ModuleSenseurWebServer Traiter message %s" % message)
         try:
             await self.__web_server.message_handler.recevoir_message_mq(message)
+            await self.__websocket_server.message_handler.recevoir_message_mq(message)
         except Exception as e:
             self.__logger.error("Erreur traitement message %s : %s" % (message.routing_key, e))
 
@@ -171,4 +241,7 @@ class ModuleSenseurWebServer:
         await self.__web_server.entretien()
 
     async def run(self, stop_event: Optional[Event] = None):
-        await self.__web_server.run(stop_event)
+        await asyncio.gather(
+            self.__web_server.run(stop_event),
+            self.__websocket_server.run(stop_event)
+        )
