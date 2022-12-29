@@ -33,6 +33,8 @@ async def handle_message(handler, message: bytes):
             return await handle_get_timezone_info(server, websocket, commande)
         elif action == 'getAppareilDisplayConfiguration':
             return await handle_requete(server, websocket, commande, enveloppe)
+        elif action == 'signerAppareil':
+            return await handle_renouvellement(handler, commande, enveloppe)
         else:
             logger.error("handle_post_poll Action inconnue %s" % action)
 
@@ -141,3 +143,44 @@ async def handle_requete(server, websocket, requete: dict, enveloppe):
 
     except Exception:
         logger.exception("Erreur traitement requete")
+
+
+async def handle_renouvellement(handler, commande: dict, enveloppe):
+    try:
+        logger.debug("handle_renouvellement Demande recue %s" % commande)
+
+        server = handler.server
+        websocket = handler.websocket
+        etat = server.etat_senseurspassifs
+
+        # Verifier - s'assure que la signature est valide et certificat est encore actif
+        user_id = enveloppe.get_user_id
+
+        # S'assurer d'avoir un appareil de role senseurspassifs
+        if user_id is None or 'senseurspassifs' not in enveloppe.get_roles:
+            logger.info("handle_renouvellement Role certificat renouvellement invalide : %s" % enveloppe.get_roles)
+
+        entete = commande['en-tete']
+        try:
+            if entete['action'] != 'signerAppareil' or entete['domaine'] != 'SenseursPassifs':
+                logger.info("handle_renouvellement Action/domaine certificat renouvellement invalide")
+        except KeyError:
+            logger.info("handle_renouvellement Action/domaine certificat renouvellement invalide")
+
+        # Faire le relai de la commande - CorePki/certissuer s'occupent des renouvellements de certs actifs
+        producer = etat.producer
+
+        try:
+            reponse = await producer.executer_commande(
+                commande, 'SenseursPassifs', 'signerAppareil', Constantes.SECURITE_PRIVE, noformat=True)
+            reponse = reponse.parsed
+            reponse['_action'] = 'signerAppareil'
+
+            reponse_bytes = json.dumps(reponse).encode('utf-8')
+
+            await websocket.send(reponse_bytes)
+        except asyncio.TimeoutError:
+            logger.info("handle_renouvellement Erreur commande signerAppareil (timeout)")
+
+    except Exception as e:
+        logger.error("handle_renouvellement Erreur %s" % str(e))
