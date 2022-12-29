@@ -241,10 +241,12 @@ class ServeurWebSocket:
 class WebSocketClientHandler:
 
     def __init__(self, server, websocket):
+        self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self.__server = server
         self.__websocket = websocket
         self.__correlation = None
         self.__event_correlation = asyncio.Event()
+        self.__date_connexion = datetime.datetime.utcnow()
 
     @property
     def server(self):
@@ -264,25 +266,25 @@ class WebSocketClientHandler:
             self.relai_messages(),
             self.relai_lectures(),
         )
+        self.__logger.debug("Fin run connexion %s" % self.__date_connexion)
 
     async def recevoir_messages(self):
-        date_connexion = datetime.datetime.utcnow()
-        print("Connexion '%s'" % date_connexion)
+        self.__logger.debug("Connexion '%s'" % self.__date_connexion)
 
         try:
             async for message in self.__websocket:
                 await handle_message(self, message)
 
         except ConnectionClosedError:
-            print("Connexion %s fermee incorrectement" % date_connexion)
+            self.__logger.debug("Connexion %s fermee incorrectement" % self.__date_connexion)
         finally:
             self.__event_correlation.set()  # Cleanup
 
-        print("Fin connexion '%s'" % date_connexion)
+        self.__logger.debug("Fin connexion '%s'" % self.__date_connexion)
 
     async def relai_messages(self):
         await self.__event_correlation.wait()
-        print("Debut relai_messages")
+        self.__logger.debug("Debut relai_messages")
 
         while self.__websocket.open:
             try:
@@ -299,7 +301,27 @@ class WebSocketClientHandler:
 
     async def relai_lectures(self):
         await self.__event_correlation.wait()
-        print("Debut relai lectures")
+        self.__logger.debug("Debut relai_lectures")
+
+        self.__event_correlation.clear()  # Reutiliser pour wait
+
+        while self.__websocket.open:
+            lectures_pending = self.__correlation.take_lectures_pending()
+            if lectures_pending is not None:
+                # Retourner les lectures en attente
+
+                reponse, _ = self.__server.etat_senseurspassifs.formatteur_message.signer_message(
+                    {'ok': True, 'lectures_senseurs': lectures_pending},
+                    action='lectures_senseurs'
+                )
+
+                await self.__websocket.send(json.dumps(reponse).encode('utf-8'))
+
+            # Faire une aggregation de 20 secondes de lectures
+            try:
+                await asyncio.wait_for(self.__event_correlation.wait(), 20)
+            except asyncio.TimeoutError:
+                pass  # OK
 
     async def transmettre_lecture(self, lecture: dict):
         await self.server.transmettre_lecture(lecture)
