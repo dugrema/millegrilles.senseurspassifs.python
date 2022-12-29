@@ -292,6 +292,10 @@ class WebSocketClientHandler:
 
                 if isinstance(reponse, MessageWrapper):
                     reponse = reponse.parsed
+                elif isinstance(reponse, dict):
+                    continue
+                    #reponse, _ = self.__server.etat_senseurspassifs.formatteur_message.signer_message(
+                    #    reponse, action=reponse['_action'])
 
                 if reponse is not None:
                     await self.__websocket.send(json.dumps(reponse).encode('utf-8'))
@@ -303,11 +307,9 @@ class WebSocketClientHandler:
         await self.__event_correlation.wait()
         self.__logger.debug("Debut relai_lectures")
 
-        self.__event_correlation.clear()  # Reutiliser pour wait
-
         while self.__websocket.open:
             lectures_pending = self.__correlation.take_lectures_pending()
-            if lectures_pending is not None:
+            if lectures_pending is not None and len(lectures_pending) > 0:
                 # Retourner les lectures en attente
 
                 reponse, _ = self.__server.etat_senseurspassifs.formatteur_message.signer_message(
@@ -315,11 +317,13 @@ class WebSocketClientHandler:
                     action='lectures_senseurs'
                 )
 
-                await self.__websocket.send(json.dumps(reponse).encode('utf-8'))
+                reponse_bytes = json.dumps(reponse).encode('utf-8')
+
+                await self.__websocket.send(reponse_bytes)
 
             # Faire une aggregation de 20 secondes de lectures
             try:
-                await asyncio.wait_for(self.__event_correlation.wait(), 20)
+                await asyncio.sleep(20)
             except asyncio.TimeoutError:
                 pass  # OK
 

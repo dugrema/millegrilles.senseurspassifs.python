@@ -58,12 +58,13 @@ class CorrelationAppareil(CorrelationHook):
     Queue de reception de messages pour un appareil
     """
 
-    def __init__(self, certificat: EnveloppeCertificat):
+    def __init__(self, certificat: EnveloppeCertificat, emettre_lectures=True):
         super().__init__()
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self.__certificat = certificat
         self.__senseurs_externes: Optional[list] = None
         self.__lectures_pending = dict()
+        self.__emettre_lectures = emettre_lectures
 
     @property
     def uuid_appareil(self):
@@ -100,7 +101,7 @@ class CorrelationAppareil(CorrelationHook):
                         except KeyError:
                             pass  # Senseur sans lecture/absent
 
-                if len(self.__lectures_pending) > 0 and self.is_message_pending is False:
+                if self.__emettre_lectures is True and len(self.__lectures_pending) > 0 and self.is_message_pending is False:
                     lectures_pending = self.take_lectures_pending()
                     # Aucun message en attente, retourner les lectures immediatement
                     message = {
@@ -235,12 +236,12 @@ class AppareilMessageHandler:
 
         return await requete.get_reponse(timeout=60)
 
-    async def enregistrer_appareil(self, certificat: EnveloppeCertificat, senseurs: Optional[list] = None) -> CorrelationAppareil:
+    async def enregistrer_appareil(self, certificat: EnveloppeCertificat, senseurs: Optional[list] = None, emettre_lectures=True) -> CorrelationAppareil:
         fingerprint = certificat.fingerprint
 
         appareil = self.__appareils.get(fingerprint)
         if appareil is None:
-            appareil = CorrelationAppareil(certificat)
+            appareil = CorrelationAppareil(certificat, emettre_lectures)
             self.__appareils[fingerprint] = appareil
 
         appareil.touch()

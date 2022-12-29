@@ -62,7 +62,7 @@ async def handle_status(handler, commande: dict):
         except KeyError:
             senseurs = None
 
-        correlation = await server.message_handler.enregistrer_appareil(enveloppe, senseurs)
+        correlation = await server.message_handler.enregistrer_appareil(enveloppe, senseurs, emettre_lectures=False)
         await handler.set_correlation(correlation)
 
         return correlation
@@ -117,7 +117,7 @@ async def handle_requete(server, websocket, requete: dict, enveloppe):
             return
 
         # Touch (conserver presence appareil)
-        await server.message_handler.enregistrer_appareil(enveloppe)
+        await server.message_handler.enregistrer_appareil(enveloppe, emettre_lectures=False)
 
         # Emettre la requete
         entete = requete['en-tete']
