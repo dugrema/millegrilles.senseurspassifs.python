@@ -1,6 +1,8 @@
 import asyncio
+import datetime
 import logging
 import ssl
+import json
 
 from aiohttp import web
 from asyncio import Event
@@ -9,8 +11,10 @@ from typing import Optional
 from websockets import serve, ConnectionClosedError, ConnectionClosedOK
 
 from senseurspassifs_relai_web import HttpCommands
+from WebSocketCommands import handle_message
 
 from millegrilles_messages.messages import Constantes
+from millegrilles_messages.messages.MessagesModule import MessageWrapper
 from millegrilles_senseurspassifs.EtatSenseursPassifs import EtatSenseursPassifs
 import millegrilles_senseurspassifs.Constantes as ConstantesSenseursPassifs
 from senseurspassifs_relai_web.Configuration import ConfigurationWeb
@@ -201,11 +205,104 @@ class ServeurWebSocket:
             self.__logger.info("Site arrete")
 
     async def handle_client(self, websocket):
-        self.__logger.info("Connexion websocket %s" % websocket)
-        # await asyncio.gather(
-        #     echo(websocket),
-        #     send_updates(websocket)
-        # )
+        client_handler = WebSocketClientHandler(self, websocket)
+        await client_handler.run()
+
+    async def transmettre_lecture(self, lecture: dict):
+        producer = self.etat_senseurspassifs.producer
+
+        if producer is None:
+            self.__logger.debug("Producer n'est pas pret, lecture n'est pas transmise")
+            return
+
+        event_producer = producer.producer_pret()
+        try:
+            await asyncio.wait_for(event_producer.wait(), 1)
+        except TimeoutError:
+            self.__logger.debug("Producer MQ pas pret, abort transmission")
+            return
+
+        message_enveloppe = {
+            'instance_id': self.etat_senseurspassifs.instance_id,
+            'lecture': lecture,
+            # 'uuid_appareil': uuid_appareil,
+            # 'user_id': user_id,
+            # 'senseurs': lectures_senseurs,
+        }
+
+        await producer.emettre_evenement(
+            message_enveloppe,
+            ConstantesSenseursPassifs.ROLE_SENSEURSPASSIFS_RELAI,
+            ConstantesSenseursPassifs.EVENEMENT_DOMAINE_LECTURE,
+            exchanges=[Constantes.SECURITE_PRIVE]
+        )
+
+
+class WebSocketClientHandler:
+
+    def __init__(self, server, websocket):
+        self.__server = server
+        self.__websocket = websocket
+        self.__correlation = None
+        self.__event_correlation = asyncio.Event()
+
+    @property
+    def server(self):
+        return self.__server
+
+    @property
+    def websocket(self):
+        return self.__websocket
+
+    async def set_correlation(self, correlation):
+        self.__correlation = correlation
+        self.__event_correlation.set()
+
+    async def run(self):
+        await asyncio.gather(
+            self.recevoir_messages(),
+            self.relai_messages(),
+            self.relai_lectures(),
+        )
+
+    async def recevoir_messages(self):
+        date_connexion = datetime.datetime.utcnow()
+        print("Connexion '%s'" % date_connexion)
+
+        try:
+            async for message in self.__websocket:
+                await handle_message(self, message)
+
+        except ConnectionClosedError:
+            print("Connexion %s fermee incorrectement" % date_connexion)
+        finally:
+            self.__event_correlation.set()  # Cleanup
+
+        print("Fin connexion '%s'" % date_connexion)
+
+    async def relai_messages(self):
+        await self.__event_correlation.wait()
+        print("Debut relai_messages")
+
+        while self.__websocket.open:
+            try:
+                reponse = await self.__correlation.get_reponse(5)
+
+                if isinstance(reponse, MessageWrapper):
+                    reponse = reponse.parsed
+
+                if reponse is not None:
+                    await self.__websocket.send(json.dumps(reponse).encode('utf-8'))
+
+            except asyncio.TimeoutError:
+                pass
+
+    async def relai_lectures(self):
+        await self.__event_correlation.wait()
+        print("Debut relai lectures")
+
+    async def transmettre_lecture(self, lecture: dict):
+        await self.server.transmettre_lecture(lecture)
 
 
 class ModuleSenseurWebServer:
