@@ -10,8 +10,8 @@ from asyncio.exceptions import TimeoutError
 from typing import Optional
 from websockets import serve, ConnectionClosedError, ConnectionClosedOK
 
-from senseurspassifs_relai_web import HttpCommands
-from WebSocketCommands import handle_message
+from . import HttpCommands
+from .WebSocketCommands import handle_message
 
 from millegrilles_messages.messages import Constantes
 from millegrilles_messages.messages.MessagesModule import MessageWrapper
