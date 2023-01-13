@@ -179,7 +179,9 @@ class AppareilMessageHandler:
         if action == 'fichePublique':
             # Conserver la fichePublique
             self.__logger.debug("Fiche publique mise a jour")
-            self.__etat_senseurspassifs.set_fiche_publique(message.parsed)
+            fiche = message.parsed
+            fiche['_certificat'] = message.certificat.chaine_pem()
+            self.__etat_senseurspassifs.set_fiche_publique(fiche)
             return
 
         user_id = message.parsed['en-tete']['partition']

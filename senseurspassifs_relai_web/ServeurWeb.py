@@ -195,8 +195,11 @@ class ServeurWebSocket:
                     requete = {'idmg': idmg}
                     reponse = await producer.executer_requete(
                         requete, 'CoreTopologie', exchange=Constantes.SECURITE_PRIVE, action='ficheMillegrille')
+
                     if reponse.parsed.get('idmg') == idmg:
-                        self.etat_senseurspassifs.set_fiche_publique(reponse.parsed)
+                        fiche = reponse.parsed
+                        fiche['_certificat'] = reponse.certificat.chaine_pem()
+                        self.etat_senseurspassifs.set_fiche_publique(fiche)
                 except asyncio.TimeoutError:
                     self.__logger.info("MQ non pret pour charger fiche")
 

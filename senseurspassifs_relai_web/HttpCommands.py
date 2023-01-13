@@ -56,7 +56,7 @@ async def handle_post_inscrire(server, request):
         # Erreur de signature, message rejete
         return web.json_response(status=403)
     except Exception as e:
-        logger.error("handle_post_inscrire Erreur %s" % str(e))
+        logger.exception("handle_post_inscrire Erreur %s" % str(e))
         return web.json_response(status=500)
 
 
