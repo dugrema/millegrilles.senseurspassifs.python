@@ -56,16 +56,23 @@ class CommandHandler:
             #     if Constantes.ROLE_CORE in roles:
             #         if action == ConstantesInstance.EVENEMENT_TOPOLOGIE_FICHEPUBLIQUE:
             #             return await self.sauvegarder_fiche_publique(message)
-            if routing_key in self.__routing_keys_modules:
+            rks = list()
+            for rk in self.__routing_keys_modules:
+                if isinstance(rk, str):
+                    rks.append(rk)
+                elif isinstance(rk, tuple):
+                    securite, rk_str = rk
+                    rks.append(rk_str)
+
+            if routing_key in rks:
                 return await self._modules_handler.recevoir_confirmation_lecture(message)
             else:
                 routing_key_generic = routing_key.split('.')
                 if len(routing_key_generic) == 4:
                     routing_key_generic[2] = '*'
                     routing_key_generic = '.'.join(routing_key_generic)
-                    if routing_key_generic in self.__routing_keys_modules:
+                    if routing_key_generic in rks:
                         return await self._modules_handler.recevoir_confirmation_lecture(message)
-
 
             if reponse is None:
                 reponse = {'ok': False, 'err': 'Commande inconnue ou acces refuse'}

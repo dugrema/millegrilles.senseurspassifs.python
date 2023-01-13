@@ -39,6 +39,8 @@ class EtatSenseursPassifs:
         self.__producer: Optional[MessageProducerFormatteur] = None
         self.__partition: Optional[str] = None
 
+        self.__fiche_publique: Optional[dict] = None
+
     async def reload_configuration(self):
         self.__logger.info("Reload configuration sur disque ou dans docker")
 
@@ -151,3 +153,10 @@ class EtatSenseursPassifs:
     @property
     def stop_event(self) -> Event:
         return self.__stop_event
+
+    def set_fiche_publique(self, fiche: dict):
+        self.__fiche_publique = fiche
+
+    @property
+    def fiche_publique(self):
+        return self.__fiche_publique

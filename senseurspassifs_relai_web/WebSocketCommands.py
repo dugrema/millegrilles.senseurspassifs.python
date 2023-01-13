@@ -35,6 +35,8 @@ async def handle_message(handler, message: bytes):
             return await handle_requete(server, websocket, commande, enveloppe)
         elif action == 'signerAppareil':
             return await handle_renouvellement(handler, commande, enveloppe)
+        elif action == 'getFiche':
+            return await handle_get_fiche(handler, commande, enveloppe)
         else:
             logger.error("handle_post_poll Action inconnue %s" % action)
 
@@ -184,3 +186,14 @@ async def handle_renouvellement(handler, commande: dict, enveloppe):
 
     except Exception as e:
         logger.error("handle_renouvellement Erreur %s" % str(e))
+
+
+async def handle_get_fiche(handler, commande: dict, enveloppe):
+    server = handler.server
+    websocket = handler.websocket
+    etat = server.etat_senseurspassifs
+
+    reponse['_action'] = 'signerAppareil'
+
+    reponse_bytes = json.dumps(reponse).encode('utf-8')
+    await websocket.send(reponse_bytes)

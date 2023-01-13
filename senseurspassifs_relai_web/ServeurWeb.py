@@ -185,6 +185,21 @@ class ServeurWebSocket:
         except Exception:
             self.__logger.exception("Erreur entretien message_handler")
 
+        if self.etat_senseurspassifs.fiche_publique is None:
+            self.__logger.info("Pre-charger fiche publique")
+            producer = self.etat_senseurspassifs.producer
+            if producer is not None:
+                try:
+                    await asyncio.wait_for(producer.producer_pret().wait(), 5000)
+                    idmg = self.etat_senseurspassifs.clecertificat.enveloppe.idmg
+                    requete = {'idmg': idmg}
+                    reponse = await producer.executer_requete(
+                        requete, 'CoreTopologie', exchange=Constantes.SECURITE_PRIVE, action='ficheMillegrille')
+                    if reponse.parsed.get('idmg') == idmg:
+                        self.etat_senseurspassifs.set_fiche_publique(reponse.parsed)
+                except asyncio.TimeoutError:
+                    self.__logger.info("MQ non pret pour charger fiche")
+
     async def run(self, stop_event: Optional[Event] = None):
         if stop_event is not None:
             self.__stop_event = stop_event
@@ -349,6 +364,7 @@ class ModuleSenseurWebServer:
             'commande.senseurspassifs_relai.%s.challengeAppareil' % instance_id,
             'evenement.SenseursPassifs.*.evenementMajDisplays',
             'evenement.SenseursPassifs.*.lectureConfirmee',
+            (Constantes.SECURITE_PUBLIC, 'evenement.CoreTopologie.fichePublique'),
         ]
 
     async def recevoir_message_mq(self, message):
@@ -358,7 +374,7 @@ class ModuleSenseurWebServer:
             await self.__web_server.message_handler.recevoir_message_mq(message)
             await self.__websocket_server.message_handler.recevoir_message_mq(message)
         except Exception as e:
-            self.__logger.error("Erreur traitement message %s : %s" % (message.routing_key, e))
+            self.__logger.exception("Erreur traitement message %s : %s" % (message.routing_key, e))
 
     async def entretien(self):
         await self.__web_server.entretien()

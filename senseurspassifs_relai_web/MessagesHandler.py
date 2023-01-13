@@ -176,6 +176,12 @@ class AppareilMessageHandler:
             pass
 
         action = message.routing_key.split('.').pop()
+        if action == 'fichePublique':
+            # Conserver la fichePublique
+            self.__logger.debug("Fiche publique mise a jour")
+            self.__etat_senseurspassifs.set_fiche_publique(message.parsed)
+            return
+
         user_id = message.parsed['en-tete']['partition']
 
         if action == 'lectureConfirmee':
@@ -183,6 +189,7 @@ class AppareilMessageHandler:
             for app in self.__appareils.values():
                 if app.user_id == user_id:
                     app.recevoir_lecture(message)
+                    return
         elif action in ['evenementMajDisplays']:
             try:
                 uuid_appareil = message.parsed['uuid_appareil']

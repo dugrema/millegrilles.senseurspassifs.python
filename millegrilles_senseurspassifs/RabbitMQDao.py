@@ -51,7 +51,11 @@ class MqThread:
 
         # RK Public pour toutes les instances
         for rk in self.__routing_key_consumers:
-            reply_res.ajouter_rk(Constantes.SECURITE_PRIVE, rk)
+            if isinstance(rk, str):
+                reply_res.ajouter_rk(Constantes.SECURITE_PRIVE, rk)
+            elif isinstance(rk, tuple):
+                securite, rk_str = rk
+                reply_res.ajouter_rk(securite, rk_str)
 
         messages_thread.set_reply_ressources(reply_res)
 
