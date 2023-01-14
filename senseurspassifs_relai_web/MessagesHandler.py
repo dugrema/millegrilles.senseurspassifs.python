@@ -89,7 +89,12 @@ class CorrelationAppareil(CorrelationHook):
             # Verifier si on veut des lectures de cet appareil
             if self.__senseurs_externes is not None:
                 for senseur_externe in self.__senseurs_externes:
-                    uuid_appareil_externe, nom_senseur = senseur_externe.split(':')
+
+                    try:
+                        uuid_appareil_externe, nom_senseur = senseur_externe.split(':')
+                    except (AttributeError, KeyError):
+                        continue  # Mauvais nom, pas un senseur externe
+
                     if uuid_appareil == uuid_appareil_externe:
                         try:
                             lectures = self.__lectures_pending[uuid_appareil]
@@ -98,6 +103,7 @@ class CorrelationAppareil(CorrelationHook):
                             self.__lectures_pending[uuid_appareil] = lectures
                         try:
                             lectures[nom_senseur] = parsed['senseurs'][nom_senseur]
+                            self.__logger.debug("Lectures pending appareil %s : %s" % (self.uuid_appareil, lectures))
                         except KeyError:
                             pass  # Senseur sans lecture/absent
 
@@ -112,6 +118,7 @@ class CorrelationAppareil(CorrelationHook):
                     self.put_message(message)
 
     def set_senseurs_externes(self, senseurs: Optional[list]):
+        self.__logger.debug("Enregistrement senseurs externes pour appareil %s : %s" % (self.uuid_appareil, senseurs))
         self.__senseurs_externes = senseurs
 
 
@@ -190,17 +197,23 @@ class AppareilMessageHandler:
             # Permettre a chaque appareil de l'usager de recevoir la lecture
             for app in self.__appareils.values():
                 if app.user_id == user_id:
-                    app.recevoir_lecture(message)
-                    return
+                    try:
+                        app.recevoir_lecture(message)
+                    except Exception:
+                        self.__logger.exception("Erreur traitement message appareil %s" % app.uuid_appareil)
+            return
         elif action in ['evenementMajDisplays']:
             try:
                 uuid_appareil = message.parsed['uuid_appareil']
                 for app in self.__appareils.values():
                     if app.uuid_appareil == uuid_appareil and app.user_id == user_id:
-                        app.put_message(message)
-                        return
+                        try:
+                            app.put_message(message)
+                        except Exception:
+                            self.__logger.exception("Erreur traitement maj display %s" % app.uuid_appareil)
             except KeyError:
                 pass
+            return
 
         self.__logger.warning("Message MQ sans match appareil")
 
