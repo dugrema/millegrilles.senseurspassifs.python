@@ -37,6 +37,8 @@ async def handle_message(handler, message: bytes):
             return await handle_renouvellement(handler, commande, enveloppe)
         elif action == 'getFichePublique':
             return await handle_get_fiche(handler, commande, enveloppe)
+        elif action == 'getRelaisWeb':
+            return await handle_get_relais_web(handler, commande, enveloppe)
         else:
             logger.error("handle_post_poll Action inconnue %s" % action)
 
@@ -104,6 +106,23 @@ async def handle_get_timezone_info(server, websocket, requete: dict):
     reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(reponse, action='timezoneInfo')
 
     await websocket.send(json.dumps(reponse).encode('utf-8'))
+
+
+async def handle_get_relais_web(handler, commande: dict, enveloppe):
+    server = handler.server
+    websocket = handler.websocket
+    etat = server.etat_senseurspassifs
+
+    fiche = dict(etat.fiche_publique)
+    if fiche is not None:
+        try:
+            url_relais = [app['url'] for app in fiche['applications']['senseurspassifs_relai'] if
+                          app['nature'] == 'dns']
+            reponse = {'relais': url_relais}
+            reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(reponse, action='relaisWeb')
+            await websocket.send(json.dumps(reponse).encode('utf-8'))
+        except KeyError:
+            pass  # OK, pas de timezone
 
 
 async def handle_requete(server, websocket, requete: dict, enveloppe):
