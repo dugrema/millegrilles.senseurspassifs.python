@@ -202,6 +202,23 @@ class AppareilMessageHandler:
                     except Exception:
                         self.__logger.exception("Erreur traitement message appareil %s" % app.uuid_appareil)
             return
+        elif action == 'commandeAppareil':
+            # Permettre a chaque appareil de l'usager de recevoir la lecture
+            certificat = message.certificat
+            user_id_certificat = certificat.get_user_id
+            try:
+                uuid_appareil = message.parsed['uuid_appareil']
+                for app in self.__appareils.values():
+                    if app.uuid_appareil == uuid_appareil and app.user_id == user_id_certificat:
+                        try:
+                            app.put_message(message)
+                            return
+                        except Exception:
+                            self.__logger.exception("Erreur traitement commande appareil %s" % app.uuid_appareil)
+            except KeyError:
+                pass
+
+            return
         elif action in ['evenementMajDisplays']:
             try:
                 uuid_appareil = message.parsed['uuid_appareil']
@@ -213,6 +230,7 @@ class AppareilMessageHandler:
                             self.__logger.exception("Erreur traitement maj display %s" % app.uuid_appareil)
             except KeyError:
                 pass
+
             return
 
         self.__logger.warning("Message MQ sans match appareil")

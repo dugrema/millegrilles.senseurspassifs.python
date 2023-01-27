@@ -365,6 +365,7 @@ class ModuleSenseurWebServer:
         instance_id = self.__web_server.etat_senseurspassifs.instance_id
         return [
             'commande.senseurspassifs_relai.%s.challengeAppareil' % instance_id,
+            'commande.senseurspassifs_relai.%s.commandeAppareil' % instance_id,
             'evenement.SenseursPassifs.*.evenementMajDisplays',
             'evenement.SenseursPassifs.*.lectureConfirmee',
             (Constantes.SECURITE_PUBLIC, 'evenement.CoreTopologie.fichePublique'),
