@@ -31,7 +31,7 @@ async def handle_message(handler, message: bytes):
             return await handle_status(handler, commande)
         elif action == 'getTimezoneInfo':
             return await handle_get_timezone_info(server, websocket, commande)
-        elif action == 'getAppareilDisplayConfiguration':
+        elif action in ['getAppareilDisplayConfiguration', 'getAppareilProgrammesConfiguration']:
             return await handle_requete(server, websocket, commande, enveloppe)
         elif action == 'signerAppareil':
             return await handle_renouvellement(handler, commande, enveloppe)

@@ -219,7 +219,7 @@ class AppareilMessageHandler:
                 pass
 
             return
-        elif action in ['evenementMajDisplays']:
+        elif action in ['evenementMajDisplays', 'evenementMajProgrammes']:
             try:
                 uuid_appareil = message.parsed['uuid_appareil']
                 for app in self.__appareils.values():
