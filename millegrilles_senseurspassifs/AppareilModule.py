@@ -293,6 +293,7 @@ class AppareilHandler:
         }
 
         message_signe, _ = self.__formatteur_message_appareil.signer_message(
+            Constantes.KIND_EVENEMENT,
             message_reformatte,
             domaine=ConstantesSenseursPassifs.DOMAINE_SENSEURSPASSIFS,
             action=ConstantesSenseursPassifs.EVENEMENT_ETAT_APPAREIL,
