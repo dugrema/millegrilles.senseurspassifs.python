@@ -331,6 +331,7 @@ class WebSocketClientHandler:
                 # Retourner les lectures en attente
 
                 reponse, _ = self.__server.etat_senseurspassifs.formatteur_message.signer_message(
+                    Constantes.KIND_COMMANDE,
                     {'ok': True, 'lectures_senseurs': lectures_pending},
                     action='lectures_senseurs'
                 )

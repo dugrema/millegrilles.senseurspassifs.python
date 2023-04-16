@@ -7,6 +7,7 @@ import string
 
 from os import path, rename, listdir, makedirs, unlink
 
+from millegrilles_messages.messages import Constantes
 from millegrilles_senseurspassifs.EtatSenseursPassifs import EtatSenseursPassifs
 from millegrilles_senseurspassifs import Constantes as ConstantesSenseursPassifs
 
@@ -131,7 +132,7 @@ class SenseursLogHandler:
 
     def generer_fichier_transaction(self, dict_lectures: dict):
         transaction, uuid_transaction = self.__etat_senseurspassifs.formatteur_message.signer_message(
-            dict_lectures.copy(), ConstantesSenseursPassifs.DOMAINE_SENSEURSPASSIFS,
+            Constantes.KIND_EVENEMENT, dict_lectures.copy(), ConstantesSenseursPassifs.DOMAINE_SENSEURSPASSIFS,
             action=ConstantesSenseursPassifs.EVENEMENT_DOMAINE_LECTURE)
 
         try:

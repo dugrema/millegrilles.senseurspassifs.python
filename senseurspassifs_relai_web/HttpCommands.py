@@ -28,7 +28,7 @@ async def handle_post_inscrire(server, request):
             commande['csr']
         except KeyError:
             reponse = {'ok': False, 'err': 'Params manquants'}
-            reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(reponse)
+            reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(Constantes.KIND_REPONSE, reponse)
             return web.json_response(status=400)
 
         # Valider signature
@@ -48,7 +48,7 @@ async def handle_post_inscrire(server, request):
         except asyncio.TimeoutError:
             reponse = {'ok': False, 'err': 'Timeout'}
 
-        reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(reponse)
+        reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(Constantes.KIND_REPONSE, reponse)
 
         # Retour code pour dire que la demande d'inscription est recue.
         return web.json_response(reponse, status=202)
@@ -90,6 +90,7 @@ async def handle_post_poll(server, request):
         if lectures_pending is not None and correlation.is_message_pending is False:
             # Retourner les lectures en attente
             reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(
+                Constantes.KIND_REPONSE,
                 {'ok': True, 'lectures_senseurs': lectures_pending},
                 action='lectures_senseurs'
             )
@@ -109,10 +110,10 @@ async def handle_post_poll(server, request):
             if isinstance(reponse, MessageWrapper):
                 reponse = reponse.parsed
             elif isinstance(reponse, dict):
-                reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(reponse, action=reponse['_action'])
+                reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(Constantes.KIND_COMMANDE, reponse, action=reponse['_action'])
         except asyncio.TimeoutError:
             reponse = {'ok': False, 'err': 'Timeout'}
-            reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(reponse)
+            reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(Constantes.KIND_REPONSE, reponse)
 
         return web.json_response(reponse)
 
@@ -146,10 +147,12 @@ async def handle_post_renouveler(server, request):
         try:
             if entete['action'] != 'signerAppareil' or entete['domaine'] != 'SenseursPassifs':
                 reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(
+                    Constantes.KIND_REPONSE,
                     {'ok': False, 'err': 'Mauvais domaine/action'})
                 return web.json_response(data=reponse, status=400)
         except KeyError:
             reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(
+                Constantes.KIND_REPONSE,
                 {'ok': False, 'err': 'Mauvais domaine/action'})
             return web.json_response(data=reponse, status=400)
 
@@ -162,7 +165,7 @@ async def handle_post_renouveler(server, request):
             reponse = reponse.parsed
         except asyncio.TimeoutError:
             reponse = {'ok': False, 'err': 'Timeout'}
-            reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(reponse)
+            reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(Constantes.KIND_REPONSE, reponse)
 
         return web.json_response(data=reponse, status=200)
 
@@ -206,7 +209,7 @@ async def handle_post_requete(server, request):
             reponse = reponse.parsed
         except asyncio.TimeoutError:
             reponse = {'ok': False, 'err': 'Timeout'}
-            reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(reponse)
+            reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(Constantes.KIND_REPONSE, reponse)
 
         return web.json_response(reponse)
 
@@ -233,7 +236,7 @@ async def handle_post_timeinfo(server, request):
         except KeyError:
             pass  # OK, pas de timezone
 
-        reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(reponse)
+        reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(Constantes.KIND_REPONSE, reponse)
         return web.json_response(reponse)
 
     except Exception as e:

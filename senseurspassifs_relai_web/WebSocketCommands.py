@@ -103,7 +103,7 @@ async def handle_get_timezone_info(server, websocket, requete: dict):
     except KeyError:
         pass  # OK, pas de timezone
 
-    reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(reponse, action='timezoneInfo')
+    reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(Constantes.KIND_COMMANDE, reponse, action='timezoneInfo')
 
     await websocket.send(json.dumps(reponse).encode('utf-8'))
 
@@ -119,7 +119,7 @@ async def handle_get_relais_web(handler, commande: dict, enveloppe):
             url_relais = [app['url'] for app in fiche['applications']['senseurspassifs_relai'] if
                           app['nature'] == 'dns']
             reponse = {'relais': url_relais}
-            reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(reponse, action='relaisWeb')
+            reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(Constantes.KIND_COMMANDE, reponse, action='relaisWeb')
             await websocket.send(json.dumps(reponse).encode('utf-8'))
         except KeyError:
             pass  # OK, pas de timezone
