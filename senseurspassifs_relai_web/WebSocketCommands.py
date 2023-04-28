@@ -22,8 +22,7 @@ async def handle_message(handler, message: bytes):
         etat = server.etat_senseurspassifs
         enveloppe = await etat.validateur_message.verifier(commande)
 
-        entete = commande['en-tete']
-        action = entete['action']
+        action = commande['routage']['action']
 
         print("Recu message %s valide %s" % (action, enveloppe))
 
@@ -131,8 +130,8 @@ async def handle_requete(server, websocket, requete: dict, enveloppe):
 
         etat = server.etat_senseurspassifs
         user_id = enveloppe.get_user_id
-        entete_requete = requete['en-tete']
-        action_requete = entete_requete['action']
+        routage_requete = requete['routage']
+        action_requete = routage_requete['action']
 
         # S'assurer d'avoir un appareil de role senseurspassifs
         if user_id is None or 'senseurspassifs' not in enveloppe.get_roles:
@@ -143,20 +142,19 @@ async def handle_requete(server, websocket, requete: dict, enveloppe):
         await server.message_handler.enregistrer_appareil(enveloppe, emettre_lectures=False)
 
         # Emettre la requete
-        entete = requete['en-tete']
-        domaine = entete['domaine']
-        action = entete['action']
-        partition = entete.get('partition')
+        domaine_requete = routage_requete['domaine']
+        partition_requete = routage_requete.get('partition')
         exchange = Constantes.SECURITE_PRIVE
 
         producer = etat.producer
 
         try:
-            reponse = await producer.executer_requete(requete, domaine, action, exchange, partition, noformat=True)
-            reponse = reponse.parsed
+            reponse = await producer.executer_requete(
+                requete, domaine_requete, action_requete, exchange, partition_requete, noformat=True)
+            reponse = reponse.parsed['__original']
 
             # Injecter _action (en-tete de reponse ne contient pas d'action)
-            reponse['_action'] = action_requete
+            reponse['attachements'] = {'action': action_requete}
 
             await websocket.send(json.dumps(reponse).encode('utf-8'))
         except asyncio.TimeoutError:
@@ -181,9 +179,9 @@ async def handle_renouvellement(handler, commande: dict, enveloppe):
         if user_id is None or 'senseurspassifs' not in enveloppe.get_roles:
             logger.info("handle_renouvellement Role certificat renouvellement invalide : %s" % enveloppe.get_roles)
 
-        entete = commande['en-tete']
+        routage = commande['routage']
         try:
-            if entete['action'] != 'signerAppareil' or entete['domaine'] != 'SenseursPassifs':
+            if routage['action'] != 'signerAppareil' or routage['domaine'] != 'SenseursPassifs':
                 logger.info("handle_renouvellement Action/domaine certificat renouvellement invalide")
         except KeyError:
             logger.info("handle_renouvellement Action/domaine certificat renouvellement invalide")
@@ -194,8 +192,10 @@ async def handle_renouvellement(handler, commande: dict, enveloppe):
         try:
             reponse = await producer.executer_commande(
                 commande, 'SenseursPassifs', 'signerAppareil', Constantes.SECURITE_PRIVE, noformat=True)
-            reponse = reponse.parsed
-            reponse['_action'] = 'signerAppareil'
+            reponse = reponse.parsed['__original']
+
+            # Injecter _action (en-tete de reponse ne contient pas d'action)
+            reponse['attachements'] = {'action': 'signerAppareil'}
 
             reponse_bytes = json.dumps(reponse).encode('utf-8')
 

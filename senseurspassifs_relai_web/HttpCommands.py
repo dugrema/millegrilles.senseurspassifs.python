@@ -144,9 +144,9 @@ async def handle_post_renouveler(server, request):
         if user_id is None or 'senseurspassifs' not in enveloppe.get_roles:
             return web.json_response(status=403)
 
-        entete = commande['en-tete']
+        routage = commande['routage']
         try:
-            if entete['action'] != 'signerAppareil' or entete['domaine'] != 'SenseursPassifs':
+            if routage['action'] != 'signerAppareil' or routage['domaine'] != 'SenseursPassifs':
                 reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(
                     Constantes.KIND_REPONSE,
                     {'ok': False, 'err': 'Mauvais domaine/action'})
@@ -197,10 +197,10 @@ async def handle_post_requete(server, request):
         await server.message_handler.enregistrer_appareil(enveloppe)
 
         # Emettre la requete
-        entete = requete['en-tete']
-        domaine = entete['domaine']
-        action = entete['action']
-        partition = entete.get('partition')
+        routage = requete['routage']
+        domaine = routage['domaine']
+        action = routage['action']
+        partition = routage.get('partition')
         exchange = Constantes.SECURITE_PRIVE
 
         producer = etat.producer

@@ -309,7 +309,7 @@ class WebSocketClientHandler:
                 reponse = await self.__correlation.get_reponse(5)
 
                 if isinstance(reponse, MessageWrapper):
-                    reponse = reponse.parsed
+                    reponse = reponse.parsed['__original']
                 elif isinstance(reponse, dict):
                     continue
                     #reponse, _ = self.__server.etat_senseurspassifs.formatteur_message.signer_message(
