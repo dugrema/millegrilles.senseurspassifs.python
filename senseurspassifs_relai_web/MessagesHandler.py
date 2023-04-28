@@ -2,6 +2,7 @@
 import asyncio
 import datetime
 import logging
+import json
 
 from typing import Optional, Union
 
@@ -236,7 +237,7 @@ class AppareilMessageHandler:
         self.__logger.warning("Message MQ sans match appareil")
 
     async def demande_certificat(self, message: dict):
-        cle_publique = message['en-tete']['cle_publique']
+        cle_publique = message['pubkey']
         try:
             requete = self.__requetes_certificat[cle_publique]
             requete.touch()
@@ -257,13 +258,14 @@ class AppareilMessageHandler:
             pass
 
         # Emettre commande certificat vers SenseursPassifs, attendre reponse
+        contenu = json.loads(message['contenu'])
         producer = self.__etat_senseurspassifs.producer
         commande = {
-            'uuid_appareil': message['uuid_appareil'],
+            'uuid_appareil': contenu['uuid_appareil'],
             'instance_id': self.__etat_senseurspassifs.instance_id,
-            'user_id': message['user_id'],
+            'user_id': contenu['user_id'],
             'cle_publique': cle_publique,
-            'csr': message['csr'],
+            'csr': contenu['csr'],
         }
         try:
             reponse = await producer.executer_commande(commande, 'SenseursPassifs', 'inscrireAppareil', Constantes.SECURITE_PRIVE)

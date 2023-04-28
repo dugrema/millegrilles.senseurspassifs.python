@@ -19,33 +19,8 @@ class ValidateurMessageControleur(ValidateurMessage):
         super().__init__(validateur_certificats)
 
     async def verifier(self, message: Union[bytes, str, dict], utiliser_date_message=False,
-                       utiliser_idmg_message=False) -> Optional[EnveloppeCertificat]:
-
-        entete = message['en-tete']
-        fingerprint = entete.get('fingerprint_certificat')
-        if fingerprint is not None:
-            return await super().verifier(message, utiliser_date_message, utiliser_idmg_message)
-
-        cle_publique = entete.get('cle_publique')
-        if cle_publique is not None:
-
-            # Mesage d'inscription, sans certificat
-            if isinstance(message, bytes):
-                dict_message = json.loads(message.decode('utf-8'))
-            elif isinstance(message, str):
-                dict_message = json.loads(message)
-            elif isinstance(message, dict):
-                dict_message = message.copy()
-            else:
-                raise TypeError("La transaction doit etre en format bytes, str ou dict")
-
-            # Preparer le message pour verification du hachage et de la signature
-            signature = dict_message['_signature']
-            message_nettoye = preparer_message(dict_message)
-
-            return await verifier_signature_cle_publique(message_nettoye, cle_publique, signature)
-
-        raise Exception("Information de verification manquanta")
+                       utiliser_idmg_message=False, verifier_certificat=True) -> Optional[EnveloppeCertificat]:
+        return await super().verifier(message, utiliser_date_message, utiliser_idmg_message, verifier_certificat)
 
 
 async def verifier_signature_cle_publique(message: dict, cle_publique: str, signature: str):

@@ -21,20 +21,21 @@ async def handle_post_inscrire(server, request):
         commande = await request.json()
         logger.debug("handle_post_inscrire commande recue : %s" % json.dumps(commande, indent=2))
 
+        # Valider signature
+        etat = server.etat_senseurspassifs
+        await etat.validateur_message.verifier(commande, verifier_certificat=False)
+        logger.debug("handle_post_inscrire Resultat validation OK")
+
         # Valider le contenu
         try:
-            commande['user_id']
-            commande['uuid_appareil']
-            commande['csr']
+            contenu = json.loads(commande['contenu'])
+            contenu['user_id']
+            contenu['uuid_appareil']
+            contenu['csr']
         except KeyError:
             reponse = {'ok': False, 'err': 'Params manquants'}
             reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(Constantes.KIND_REPONSE, reponse)
             return web.json_response(status=400)
-
-        # Valider signature
-        etat = server.etat_senseurspassifs
-        await etat.validateur_message.verifier(commande)
-        logger.debug("handle_post_inscrire Resultat validation OK")
 
         # Verifier si on a recu le certificat pour la cle publique
         try:
