@@ -62,8 +62,9 @@ async def handle_status(handler, commande: dict):
         # Emettre l'etat de l'appareil (une lecture)
         await handler.transmettre_lecture(commande)
 
+        contenu = json.loads(commande['contenu'])
         try:
-            senseurs = commande['senseurs']
+            senseurs = contenu['senseurs']
         except KeyError:
             senseurs = None
 

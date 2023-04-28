@@ -167,10 +167,10 @@ class AppareilMessageHandler:
 
     async def recevoir_message_mq(self, message: MessageWrapper):
 
-        # Tenter match par fingerprint
+        # Tenter match par fingerprint certificat (pubkey)
         try:
-            self.__appareils[message.parsed['fingerprint']].put_message(message)
-            self.__logger.debug("Routing message MQ appareil via fingerprint %s" % message.parsed['fingerprint'])
+            self.__appareils[message.pubkey].put_message(message)
+            self.__logger.debug("Routing message MQ appareil via fingerprint %s" % message.pubkey)
             return
         except KeyError:
             pass
