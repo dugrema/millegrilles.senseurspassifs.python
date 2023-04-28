@@ -183,16 +183,16 @@ class AppareilMessageHandler:
         except KeyError:
             pass
 
-        action = message.routing_key.split('.').pop()
+        action = message.routage['action']
         if action == 'fichePublique':
             # Conserver la fichePublique
             self.__logger.debug("Fiche publique mise a jour")
             fiche = message.parsed
-            fiche['_certificat'] = message.certificat.chaine_pem()
+            fiche['certificat'] = message.certificat.chaine_pem()
             self.__etat_senseurspassifs.set_fiche_publique(fiche)
             return
 
-        user_id = message.parsed['en-tete']['partition']
+        user_id = message.routage['partition']
 
         if action == 'lectureConfirmee':
             # Permettre a chaque appareil de l'usager de recevoir la lecture

@@ -42,7 +42,7 @@ async def handle_post_inscrire(server, request):
             reponse = await server.message_handler.demande_certificat(commande)
             reponse_parsed = reponse.parsed
             if reponse_parsed.get('certificat') or reponse_parsed.get('challenge'):
-                return web.json_response(reponse_parsed)  # Reponse externe, code http 200
+                return web.json_response(reponse_parsed['__original'])  # Reponse externe, code http 200
             else:
                 # Timeout (commande inscription sans certificat/challenge)
                 reponse = {'ok': False}
