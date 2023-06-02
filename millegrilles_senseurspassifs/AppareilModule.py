@@ -269,10 +269,10 @@ class AppareilHandler:
                 'instance_id': self._etat_senseurspassifs.instance_id,
                 'uuid_senseur': no_senseur,
                 'senseurs': lectures_senseurs,
-                'notifications': [{
-                    'programme_id': 'abcd1234',
-                    'message': 'Notification'
-                }]
+                # 'notifications': [{
+                #     'programme_id': 'abcd1234',
+                #     'message': 'Notification'
+                # }]
             }
         }
 
