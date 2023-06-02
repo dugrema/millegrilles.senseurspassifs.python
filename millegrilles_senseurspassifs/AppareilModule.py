@@ -269,6 +269,10 @@ class AppareilHandler:
                 'instance_id': self._etat_senseurspassifs.instance_id,
                 'uuid_senseur': no_senseur,
                 'senseurs': lectures_senseurs,
+                'notifications': [{
+                    'programme_id': 'abcd1234',
+                    'message': 'Notification'
+                }]
             }
         }
 
@@ -289,8 +293,12 @@ class AppareilHandler:
 
         message_reformatte = {
             'uuid_appareil': message['instance_id'],
-            'lectures_senseurs': message['senseurs']
+            'lectures_senseurs': message['senseurs'],
         }
+        try:
+            message_reformatte['notifications'] = message['notifications']
+        except KeyError:
+            pass
 
         message_signe, _ = self.__formatteur_message_appareil.signer_message(
             Constantes.KIND_EVENEMENT,
@@ -454,7 +462,7 @@ class DummyProducer(SenseurModuleProducerAbstract):
         while event_attente.is_set() is False:
             await self.__produire_lecture()
             try:
-                await asyncio.wait_for(event_attente.wait(), 5)
+                await asyncio.wait_for(event_attente.wait(), 30)
             except TimeoutError:
                 pass
 
