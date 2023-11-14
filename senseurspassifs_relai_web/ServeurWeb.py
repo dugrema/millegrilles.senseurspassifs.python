@@ -316,6 +316,10 @@ class WebSocketClientHandler:
                     #    reponse, action=reponse['_action'])
 
                 if reponse is not None:
+                    if self.__correlation.chiffrage_disponible:
+                        message_chiffre = json.dumps({'contenu': reponse['contenu'], 'enveloppe': None})
+                        # todo - chiffrer contenu
+                        reponse['attachements'] = {'relai_chiffre': message_chiffre}
                     await self.__websocket.send(json.dumps(reponse).encode('utf-8'))
 
             except asyncio.TimeoutError:

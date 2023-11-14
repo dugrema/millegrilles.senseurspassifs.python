@@ -139,6 +139,10 @@ class CorrelationAppareil(CorrelationHook):
         self.__logger.debug("Enregistrement senseurs externes pour appareil %s : %s" % (self.uuid_appareil, senseurs))
         self.__senseurs_externes = senseurs
 
+    @property
+    def chiffrage_disponible(self):
+        return self.__cle_chiffrage is not None
+
 
 class CorrelationRequeteCertificat(CorrelationHook):
 
