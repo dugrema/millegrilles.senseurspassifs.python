@@ -1,10 +1,14 @@
 # Effectue la correlation des messages pour appareils web
 import asyncio
+import binascii
 import datetime
 import logging
 import json
 
 from typing import Optional, Union
+
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
+from cryptography.hazmat.primitives import serialization
 
 from millegrilles_messages.messages import Constantes
 
@@ -66,6 +70,7 @@ class CorrelationAppareil(CorrelationHook):
         self.__senseurs_externes: Optional[list] = None
         self.__lectures_pending = dict()
         self.__emettre_lectures = emettre_lectures
+        self.__cle_chiffrage: Optional[bytes] = None
 
     @property
     def uuid_appareil(self):
@@ -74,6 +79,18 @@ class CorrelationAppareil(CorrelationHook):
     @property
     def user_id(self):
         return self.__certificat.get_user_id
+
+    def preparer_cle_chiffrage(self, cle_peer: str) -> str:
+        cle_peer = binascii.unhexlify(cle_peer.encode('utf-8'))
+
+        x25519_public_key = X25519PublicKey.from_public_bytes(cle_peer)
+        cle_privee = X25519PrivateKey.generate()
+        cle_handshake = cle_privee.exchange(x25519_public_key)
+        self.__cle_chiffrage = cle_handshake
+        # self.__logger.error(" !!! CLE SECRETE !!! : %s" % binascii.hexlify(self.__cle_chiffrage))
+
+        cle_peer_bytes = cle_privee.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+        return binascii.hexlify(cle_peer_bytes).decode('utf-8')
 
     def take_lectures_pending(self):
         if len(self.__lectures_pending) > 0:
@@ -293,5 +310,14 @@ class AppareilMessageHandler:
 
         return appareil
 
+    async def echanger_cle_chiffrage(self, certificat, cle_peer: str):
+        fingerprint = certificat.fingerprint
 
+        appareil = self.__appareils.get(fingerprint)
+        if appareil is None:
+            raise ValueError('Appareil inconnu')
+
+        cle_publique_locale = appareil.preparer_cle_chiffrage(cle_peer)
+
+        return cle_publique_locale
 

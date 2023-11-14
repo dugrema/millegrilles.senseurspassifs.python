@@ -38,6 +38,8 @@ async def handle_message(handler, message: bytes):
             return await handle_get_fiche(handler, commande, enveloppe)
         elif action == 'getRelaisWeb':
             return await handle_get_relais_web(handler, commande, enveloppe)
+        elif action == 'echangerClesChiffrage':
+            return await handle_echanger_cles_chiffrage(handler, commande, enveloppe)
         else:
             logger.error("handle_post_poll Action inconnue %s" % action)
 
@@ -217,3 +219,33 @@ async def handle_get_fiche(handler, commande: dict, enveloppe):
     if fiche is not None:
         reponse_bytes = json.dumps(fiche).encode('utf-8')
         await websocket.send(reponse_bytes)
+
+
+async def handle_echanger_cles_chiffrage(handler, commande: dict, enveloppe):
+    server = handler.server
+    websocket = handler.websocket
+    etat = server.etat_senseurspassifs
+
+    user_id = enveloppe.get_user_id
+
+    # S'assurer d'avoir un appareil de role senseurspassifs
+    if user_id is None or 'senseurspassifs' not in enveloppe.get_roles:
+        logger.info("Mauvais role certificat (%s) pour etat appareil" % enveloppe.get_roles)
+        return
+    correlation = await server.message_handler.enregistrer_appareil(enveloppe, emettre_lectures=False)
+    await handler.set_correlation(correlation)
+
+    contenu = json.loads(commande['contenu'])
+
+    # Valider enveloppe, doit correspondre a l'appareil authentifie
+    logger.debug("handle_echanger_cles_chiffrage commande : %s" % commande)
+    cle_peer = contenu['peer']
+    cle_publique_locale = await server.message_handler.echanger_cle_chiffrage(enveloppe, cle_peer)
+
+    reponse = {'peer': cle_publique_locale}
+    reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(
+        Constantes.KIND_COMMANDE, reponse, action='echangerSecret')
+
+    reponse_bytes = json.dumps(reponse).encode('utf-8')
+    await websocket.send(reponse_bytes)
+
