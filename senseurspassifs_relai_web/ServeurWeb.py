@@ -19,7 +19,7 @@ from millegrilles_senseurspassifs.EtatSenseursPassifs import EtatSenseursPassifs
 import millegrilles_senseurspassifs.Constantes as ConstantesSenseursPassifs
 from senseurspassifs_relai_web.Configuration import ConfigurationWeb
 from senseurspassifs_relai_web.MessagesHandler import AppareilMessageHandler, CorrelationAppareil
-
+from senseurspassifs_relai_web.Chiffrage import chiffrer_message_chacha20poly1305
 
 class WebServer:
 
@@ -323,7 +323,9 @@ class WebSocketClientHandler:
 
                 if reponse is not None:
                     if self.__correlation.chiffrage_disponible:
+                        cle_dechiffrage = self.__correlation.cle_dechiffrage
                         message_chiffre = json.dumps({'contenu': reponse['contenu'], 'enveloppe': None})
+                        message_chiffre = chiffrer_message_chacha20poly1305(cle_dechiffrage, message_chiffre)
                         # todo - chiffrer contenu
                         reponse['attachements'] = {'relai_chiffre': message_chiffre}
                     await self.__websocket.send(json.dumps(reponse).encode('utf-8'))
