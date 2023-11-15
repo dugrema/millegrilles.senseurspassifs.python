@@ -37,8 +37,8 @@ def chiffrer_message_chacha20poly1305(key: bytes, plaintext: Union[str, bytes]):
     #cipher.update(nonce)
     ciphertext, tag = cipher.encrypt_and_digest(plaintext)
 
-    print('Ciphertext binascii : %s' % binascii.hexlify(ciphertext))
-    print('Nonce binascii : %s' % binascii.hexlify(cipher.nonce))
+    # print('Ciphertext binascii : %s' % binascii.hexlify(ciphertext))
+    # print('Nonce binascii : %s' % binascii.hexlify(cipher.nonce))
 
     return {
         'ciphertext': base64.b64encode(ciphertext).decode('utf-8'),
