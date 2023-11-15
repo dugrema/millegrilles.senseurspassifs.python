@@ -8,6 +8,7 @@ from cryptography.exceptions import InvalidSignature
 
 from millegrilles_messages.messages import Constantes
 from millegrilles_messages.messages.MessagesModule import MessageWrapper
+from senseurspassifs_relai_web.Chiffrage import dechiffrer_message_chacha20poly1305
 
 logger = logging.getLogger(__name__)
 
@@ -44,10 +45,22 @@ async def handle_message(handler, message: bytes):
                 return await handle_confirmer_relai(handler, commande, enveloppe)
 
         except KeyError:
-            commande['message_chiffre']
+            ciphertext = commande['ciphertext']
+            tag = commande['tag']
+            nonce = commande['nonce']
+            fingerprint = commande['fingerprint']
 
-            if action == 'etatAppareilRelai':
-                return await handle_relai_status(handler, commande)
+            try:
+                correlation_appareil = server.message_handler.get_correlation_appareil(fingerprint)
+                cle_dechiffrage = correlation_appareil.cle_dechiffrage
+                commande = dechiffrer_message_chacha20poly1305(cle_dechiffrage, nonce, tag, ciphertext)
+                commande = json.loads(commande)
+
+                if action == 'etatAppareilRelai':
+                    return await handle_relai_status(handler, correlation_appareil, commande)
+            except Exception:
+                logger.exception('Erreur dechiffrage, on desactive le chiffrage')
+                # todo: desactiver chiffrage
 
         logger.error("handle_post_poll Action inconnue %s" % action)
 
@@ -87,32 +100,19 @@ async def handle_status(handler, commande: dict):
         logger.error("handle_post_poll Erreur %s" % str(e))
 
 
-async def handle_relai_status(handler, commande: dict):
+async def handle_relai_status(handler, correlation_appareil, commande: dict):
     server = handler.server
     try:
         logger.debug("handle_status Etat recu %s" % commande)
 
         etat = server.etat_senseurspassifs
 
-        # Trouver la cle de dechiffrage de l'appareil
-        fingerprint = commande['fingerprint']
-        correlation_appareil = server.message_handler.get_correlation_appareil(fingerprint)
-        cle_dechiffrage = correlation_appareil.cle_dechiffrage
-
-        message_chiffre = commande['message_chiffre']
-        message_dechiffre = json.loads(message_chiffre)
-
-        # commande_relayee = {
-        #     'lectures_senseurs': message_dechiffre,
-        #     'instance_id': correlation_appareil.uuid_appareil
-        # }
-
         # Emettre l'etat de l'appareil (une lecture)
-        await handler.transmettre_lecture(message_dechiffre, correlation_appareil)
+        await handler.transmettre_lecture(commande, correlation_appareil)
 
         correlation_appareil.touch()
         try:
-            senseurs = message_dechiffre['senseurs']
+            senseurs = commande['senseurs']
             if senseurs is not None:
                 correlation_appareil.set_senseurs_externes(senseurs)
         except KeyError:
