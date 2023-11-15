@@ -8,7 +8,7 @@ from cryptography.exceptions import InvalidSignature
 
 from millegrilles_messages.messages import Constantes
 from millegrilles_messages.messages.MessagesModule import MessageWrapper
-from senseurspassifs_relai_web.Chiffrage import dechiffrer_message_chacha20poly1305
+from senseurspassifs_relai_web.Chiffrage import dechiffrer_message_chacha20poly1305, attacher_reponse_chiffree
 
 logger = logging.getLogger(__name__)
 
@@ -23,41 +23,49 @@ async def handle_message(handler, message: bytes):
         etat = server.etat_senseurspassifs
         action = commande['routage']['action']
 
+        fingerprint = commande.get('fingerprint')
         try:
-            commande['sig']
+            correlation_appareil = server.message_handler.get_correlation_appareil(fingerprint)
+        except ValueError:
+            # Appareil inconnu - OK
+            correlation_appareil = None
+
+        try:
+            commande['sig']  # Verifier que l'element sig est present (message non chiffre)
             enveloppe = await etat.validateur_message.verifier(commande)
 
             if action == 'etatAppareil':
-                return await handle_status(handler, commande)
+                return await handle_status(handler, correlation_appareil, commande)
             elif action == 'getTimezoneInfo':
-                return await handle_get_timezone_info(server, websocket, commande)
+                return await handle_get_timezone_info(server, websocket, correlation_appareil, commande)
             elif action in ['getAppareilDisplayConfiguration', 'getAppareilProgrammesConfiguration']:
-                return await handle_requete(server, websocket, commande, enveloppe)
+                return await handle_requete(server, websocket, correlation_appareil, commande, enveloppe)
             elif action == 'signerAppareil':
-                return await handle_renouvellement(handler, commande, enveloppe)
+                return await handle_renouvellement(handler, correlation_appareil, commande, enveloppe)
             elif action == 'getFichePublique':
-                return await handle_get_fiche(handler, commande, enveloppe)
+                return await handle_get_fiche(handler, correlation_appareil, commande, enveloppe)
             elif action == 'getRelaisWeb':
-                return await handle_get_relais_web(handler, commande, enveloppe)
+                return await handle_get_relais_web(handler, correlation_appareil)
             elif action == 'echangerClesChiffrage':
-                return await handle_echanger_cles_chiffrage(handler, commande, enveloppe)
+                return await handle_echanger_cles_chiffrage(handler, correlation_appareil, commande, enveloppe)
             elif action == 'confirmerRelai':
-                return await handle_confirmer_relai(handler, commande, enveloppe)
+                return await handle_confirmer_relai(handler, correlation_appareil, commande, enveloppe)
 
         except KeyError:
             ciphertext = commande['ciphertext']
             tag = commande['tag']
             nonce = commande['nonce']
-            fingerprint = commande['fingerprint']
 
             try:
-                correlation_appareil = server.message_handler.get_correlation_appareil(fingerprint)
                 cle_dechiffrage = correlation_appareil.cle_dechiffrage
                 commande = dechiffrer_message_chacha20poly1305(cle_dechiffrage, nonce, tag, ciphertext)
                 commande = json.loads(commande)
 
                 if action == 'etatAppareilRelai':
                     return await handle_relai_status(handler, correlation_appareil, commande)
+                elif action == 'getRelaisWeb':
+                    return await handle_get_relais_web(handler, correlation_appareil)
+
             except Exception:
                 logger.exception('Erreur dechiffrage, on desactive le chiffrage')
                 # todo: desactiver chiffrage
@@ -68,7 +76,7 @@ async def handle_message(handler, message: bytes):
         logger.error("handle_post_poll Erreur %s" % str(e))
 
 
-async def handle_status(handler, commande: dict):
+async def handle_status(handler, correlation_appareil, commande: dict):
     server = handler.server
     try:
         logger.debug("handle_status Etat recu %s" % commande)
@@ -124,7 +132,7 @@ async def handle_relai_status(handler, correlation_appareil, commande: dict):
         logger.error("handle_post_poll Erreur %s" % str(e))
 
 
-async def handle_get_timezone_info(server, websocket, requete: dict):
+async def handle_get_timezone_info(server, websocket, correlation_appareil, requete: dict):
     reponse = {'ok': True}
 
     timezone_str = None
@@ -142,10 +150,12 @@ async def handle_get_timezone_info(server, websocket, requete: dict):
 
     reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(Constantes.KIND_COMMANDE, reponse, action='timezoneInfo')
 
+    attacher_reponse_chiffree(correlation_appareil, reponse, enveloppe=None)
+
     await websocket.send(json.dumps(reponse).encode('utf-8'))
 
 
-async def handle_get_relais_web(handler, commande: dict, enveloppe):
+async def handle_get_relais_web(handler, correlation_appareil):
     server = handler.server
     websocket = handler.websocket
     etat = server.etat_senseurspassifs
@@ -157,12 +167,13 @@ async def handle_get_relais_web(handler, commande: dict, enveloppe):
                           app['nature'] == 'dns']
             reponse = {'relais': url_relais}
             reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(Constantes.KIND_COMMANDE, reponse, action='relaisWeb')
+            attacher_reponse_chiffree(correlation_appareil, reponse, enveloppe=None)
             await websocket.send(json.dumps(reponse).encode('utf-8'))
         except KeyError:
             pass  # OK, pas de timezone
 
 
-async def handle_requete(server, websocket, requete: dict, enveloppe):
+async def handle_requete(server, websocket, correlation_appareil, requete: dict, enveloppe):
     try:
         logger.debug("handle_post_request Etat recu %s" % requete)
 
@@ -194,6 +205,8 @@ async def handle_requete(server, websocket, requete: dict, enveloppe):
             # Injecter _action (en-tete de reponse ne contient pas d'action)
             reponse['attachements'] = {'action': action_requete}
 
+            attacher_reponse_chiffree(correlation_appareil, reponse, enveloppe=None)
+
             await websocket.send(json.dumps(reponse).encode('utf-8'))
         except asyncio.TimeoutError:
             pass
@@ -202,7 +215,7 @@ async def handle_requete(server, websocket, requete: dict, enveloppe):
         logger.exception("Erreur traitement requete")
 
 
-async def handle_renouvellement(handler, commande: dict, enveloppe):
+async def handle_renouvellement(handler, correlation_appareil, commande: dict, enveloppe):
     try:
         logger.debug("handle_renouvellement Demande recue %s" % commande)
 
@@ -235,6 +248,8 @@ async def handle_renouvellement(handler, commande: dict, enveloppe):
             # Injecter _action (en-tete de reponse ne contient pas d'action)
             reponse['attachements'] = {'action': 'signerAppareil'}
 
+            attacher_reponse_chiffree(correlation_appareil, reponse, enveloppe=None)
+
             reponse_bytes = json.dumps(reponse).encode('utf-8')
 
             await websocket.send(reponse_bytes)
@@ -245,7 +260,7 @@ async def handle_renouvellement(handler, commande: dict, enveloppe):
         logger.error("handle_renouvellement Erreur %s" % str(e))
 
 
-async def handle_get_fiche(handler, commande: dict, enveloppe):
+async def handle_get_fiche(handler, correlation_appareil, commande: dict, enveloppe):
     server = handler.server
     websocket = handler.websocket
     etat = server.etat_senseurspassifs
@@ -256,7 +271,7 @@ async def handle_get_fiche(handler, commande: dict, enveloppe):
         await websocket.send(reponse_bytes)
 
 
-async def handle_echanger_cles_chiffrage(handler, commande: dict, enveloppe):
+async def handle_echanger_cles_chiffrage(handler, correlation_appareil, commande: dict, enveloppe):
     server = handler.server
     websocket = handler.websocket
     etat = server.etat_senseurspassifs
@@ -285,7 +300,7 @@ async def handle_echanger_cles_chiffrage(handler, commande: dict, enveloppe):
     await websocket.send(reponse_bytes)
 
 
-async def handle_confirmer_relai(handler, commande: dict, enveloppe):
+async def handle_confirmer_relai(handler, correlation_appareil, commande: dict, enveloppe):
     # Verifier que la commande est bien pour le certificat local
     server = handler.server
     websocket = handler.websocket

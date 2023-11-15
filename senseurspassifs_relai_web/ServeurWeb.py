@@ -19,7 +19,8 @@ from millegrilles_senseurspassifs.EtatSenseursPassifs import EtatSenseursPassifs
 import millegrilles_senseurspassifs.Constantes as ConstantesSenseursPassifs
 from senseurspassifs_relai_web.Configuration import ConfigurationWeb
 from senseurspassifs_relai_web.MessagesHandler import AppareilMessageHandler, CorrelationAppareil
-from senseurspassifs_relai_web.Chiffrage import chiffrer_message_chacha20poly1305
+from senseurspassifs_relai_web.Chiffrage import attacher_reponse_chiffree
+
 
 class WebServer:
 
@@ -226,7 +227,7 @@ class ServeurWebSocket:
         client_handler = WebSocketClientHandler(self, websocket)
         await client_handler.run()
 
-    async def transmettre_lecture(self, lecture: dict, correlation_appareil: CorrelationAppareil):
+    async def transmettre_lecture(self, lecture: dict, correlation_appareil: CorrelationAppareil = None):
         producer = self.etat_senseurspassifs.producer
 
         if producer is None:
@@ -318,16 +319,15 @@ class WebSocketClientHandler:
                     reponse = reponse.parsed['__original']
                 elif isinstance(reponse, dict):
                     continue
-                    #reponse, _ = self.__server.etat_senseurspassifs.formatteur_message.signer_message(
-                    #    reponse, action=reponse['_action'])
 
                 if reponse is not None:
-                    if self.__correlation.chiffrage_disponible:
-                        cle_dechiffrage = self.__correlation.cle_dechiffrage
-                        message_chiffre = json.dumps({'contenu': reponse['contenu'], 'enveloppe': None})
-                        message_chiffre = chiffrer_message_chacha20poly1305(cle_dechiffrage, message_chiffre)
-                        # todo - chiffrer contenu
-                        reponse['attachements'] = {'relai_chiffre': message_chiffre}
+                    attacher_reponse_chiffree(self.__correlation, reponse, enveloppe=None)
+                    # if self.__correlation.chiffrage_disponible:
+                    #     cle_dechiffrage = self.__correlation.cle_dechiffrage
+                    #     message_chiffre = json.dumps({'contenu': reponse['contenu'], 'enveloppe': None})
+                    #     # Chiffrer le contenu
+                    #     message_chiffre = chiffrer_message_chacha20poly1305(cle_dechiffrage, message_chiffre)
+                    #     reponse['attachements'] = {'relai_chiffre': message_chiffre}
                     await self.__websocket.send(json.dumps(reponse).encode('utf-8'))
 
             except asyncio.TimeoutError:
@@ -348,8 +348,17 @@ class WebSocketClientHandler:
                     action='lectures_senseurs'
                 )
 
-                reponse_bytes = json.dumps(reponse).encode('utf-8')
+                # Ajouter element relai_chiffre si possible
+                attacher_reponse_chiffree(self.__correlation, reponse, enveloppe=None)
 
+                # if self.__correlation.chiffrage_disponible:
+                #     cle_dechiffrage = self.__correlation.cle_dechiffrage
+                #     message_chiffre = json.dumps({'contenu': reponse['contenu'], 'enveloppe': None})
+                #     # Chiffrer le contenu
+                #     message_chiffre = chiffrer_message_chacha20poly1305(cle_dechiffrage, message_chiffre)
+                #     reponse['attachements'] = {'relai_chiffre': message_chiffre}
+
+                reponse_bytes = json.dumps(reponse).encode('utf-8')
                 await self.__websocket.send(reponse_bytes)
 
             # Faire une aggregation de 20 secondes de lectures
@@ -358,7 +367,7 @@ class WebSocketClientHandler:
             except asyncio.TimeoutError:
                 pass  # OK
 
-    async def transmettre_lecture(self, lecture: dict, correlation_appareil):
+    async def transmettre_lecture(self, lecture: dict, correlation_appareil = None):
         await self.server.transmettre_lecture(lecture, correlation_appareil)
 
 

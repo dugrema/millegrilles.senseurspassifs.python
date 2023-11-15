@@ -3,7 +3,7 @@ import binascii
 import json
 import secrets
 
-from typing import Union
+from typing import Union, Optional
 
 from base64 import b64encode
 from Crypto.Cipher import ChaCha20_Poly1305
@@ -64,3 +64,27 @@ def dechiffrer_message_chacha20poly1305(key: bytes, nonce: Union[str, bytes], ta
 
     return plaintext
 
+
+def attacher_reponse_chiffree(correlation=None, reponse: Optional[dict] = None, enveloppe=None):
+    if correlation is None or reponse is None:
+        return
+
+    if correlation.chiffrage_disponible:
+        cle_dechiffrage = correlation.cle_dechiffrage
+
+        if enveloppe is not None:
+            info_enveloppe = None  # todo
+        else:
+            info_enveloppe = None
+
+        message_chiffre = json.dumps({'contenu': reponse['contenu'], 'enveloppe': info_enveloppe})
+
+        # Chiffrer le contenu
+        message_chiffre = chiffrer_message_chacha20poly1305(cle_dechiffrage, message_chiffre)
+        try:
+            attachements = reponse['attachements']
+        except KeyError:
+            attachements = dict()
+            reponse['attachements'] = attachements
+
+        attachements['relai_chiffre'] = message_chiffre
