@@ -65,10 +65,15 @@ async def handle_message(handler, message: bytes):
                     return await handle_relai_status(handler, correlation_appareil, commande)
                 elif action == 'getRelaisWeb':
                     return await handle_get_relais_web(handler, correlation_appareil)
+                elif action == 'getTimezoneInfo':
+                    return await handle_get_timezone_info(server, websocket, correlation_appareil, commande)
 
             except Exception:
                 logger.exception('Erreur dechiffrage, on desactive le chiffrage')
-                # todo: desactiver chiffrage
+                correlation_appareil.clear_chiffrage()
+                reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(
+                    Constantes.KIND_COMMANDE, dict(), action='resetSecret')
+                await websocket.send(json.dumps(reponse).encode('utf-8'))
 
         logger.error("handle_post_poll Action inconnue %s" % action)
 
