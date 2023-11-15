@@ -1,19 +1,16 @@
 # Effectue la correlation des messages pour appareils web
 import asyncio
-import binascii
 import datetime
 import logging
 import json
 
 from typing import Optional, Union
 
-from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
-from cryptography.hazmat.primitives import serialization
-
 from millegrilles_messages.messages import Constantes
 
 from millegrilles_messages.messages.EnveloppeCertificat import EnveloppeCertificat
 from millegrilles_messages.messages.MessagesModule import MessageWrapper
+from senseurspassifs_relai_web.Chiffrage import preparer_cle_chiffrage
 
 MAX_REQUETES_CERTIFICAT = 5
 EXPIRATION_APPAREIL = datetime.timedelta(minutes=10)
@@ -71,6 +68,7 @@ class CorrelationAppareil(CorrelationHook):
         self.__lectures_pending = dict()
         self.__emettre_lectures = emettre_lectures
         self.__cle_chiffrage: Optional[bytes] = None
+        self.__relai_messages_actif = True
 
     @property
     def uuid_appareil(self):
@@ -81,16 +79,21 @@ class CorrelationAppareil(CorrelationHook):
         return self.__certificat.get_user_id
 
     def preparer_cle_chiffrage(self, cle_peer: str) -> str:
-        cle_peer = binascii.unhexlify(cle_peer.encode('utf-8'))
+        self.__cle_chiffrage, cle_peer_str = preparer_cle_chiffrage(cle_peer)
+        return cle_peer_str
+        # cle_peer = binascii.unhexlify(cle_peer.encode('utf-8'))
+        #
+        # x25519_public_key = X25519PublicKey.from_public_bytes(cle_peer)
+        # cle_privee = X25519PrivateKey.generate()
+        # cle_handshake = cle_privee.exchange(x25519_public_key)
+        # self.__cle_chiffrage = cle_handshake
+        # # self.__logger.error(" !!! CLE SECRETE !!! : %s" % binascii.hexlify(self.__cle_chiffrage))
+        #
+        # cle_peer_bytes = cle_privee.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+        # return binascii.hexlify(cle_peer_bytes).decode('utf-8')
 
-        x25519_public_key = X25519PublicKey.from_public_bytes(cle_peer)
-        cle_privee = X25519PrivateKey.generate()
-        cle_handshake = cle_privee.exchange(x25519_public_key)
-        self.__cle_chiffrage = cle_handshake
-        # self.__logger.error(" !!! CLE SECRETE !!! : %s" % binascii.hexlify(self.__cle_chiffrage))
-
-        cle_peer_bytes = cle_privee.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
-        return binascii.hexlify(cle_peer_bytes).decode('utf-8')
+    def activer_relai_messages(self):
+        self.__relai_messages_actif = True
 
     def take_lectures_pending(self):
         if len(self.__lectures_pending) > 0:
@@ -142,6 +145,18 @@ class CorrelationAppareil(CorrelationHook):
     @property
     def chiffrage_disponible(self):
         return self.__cle_chiffrage is not None
+
+    @property
+    def relai_messages_disponible(self):
+        return self.__relai_messages_actif
+
+    @property
+    def cle_dechiffrage(self):
+        return self.__cle_chiffrage
+
+    def clear_chiffrage(self):
+        self.__relai_messages_actif = False
+        self.__cle_chiffrage = None
 
 
 class CorrelationRequeteCertificat(CorrelationHook):
@@ -324,4 +339,23 @@ class AppareilMessageHandler:
         cle_publique_locale = appareil.preparer_cle_chiffrage(cle_peer)
 
         return cle_publique_locale
+
+    def activer_relai_messages(self, fingerprint):
+        appareil = self.__appareils.get(fingerprint)
+        if appareil is None:
+            raise ValueError('Appareil inconnu')
+        appareil.activer_relai_messages()
+
+    def get_correlation_appareil(self, fingerprint) -> CorrelationAppareil:
+        appareil = self.__appareils.get(fingerprint)
+        if appareil is None:
+            raise ValueError('Appareil inconnu')
+        return appareil
+
+    def reset_chiffrage(self, fingerprint):
+        try:
+            appareil = self.__appareils[fingerprint]
+            appareil.clear_chiffrage()
+        except KeyError:
+            pass
 

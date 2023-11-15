@@ -18,7 +18,7 @@ from millegrilles_messages.messages.MessagesModule import MessageWrapper
 from millegrilles_senseurspassifs.EtatSenseursPassifs import EtatSenseursPassifs
 import millegrilles_senseurspassifs.Constantes as ConstantesSenseursPassifs
 from senseurspassifs_relai_web.Configuration import ConfigurationWeb
-from senseurspassifs_relai_web.MessagesHandler import AppareilMessageHandler
+from senseurspassifs_relai_web.MessagesHandler import AppareilMessageHandler, CorrelationAppareil
 
 
 class WebServer:
@@ -226,7 +226,7 @@ class ServeurWebSocket:
         client_handler = WebSocketClientHandler(self, websocket)
         await client_handler.run()
 
-    async def transmettre_lecture(self, lecture: dict):
+    async def transmettre_lecture(self, lecture: dict, correlation_appareil: CorrelationAppareil):
         producer = self.etat_senseurspassifs.producer
 
         if producer is None:
@@ -240,13 +240,19 @@ class ServeurWebSocket:
             self.__logger.debug("Producer MQ pas pret, abort transmission")
             return
 
-        message_enveloppe = {
-            'instance_id': self.etat_senseurspassifs.instance_id,
-            'lecture': lecture,
-            # 'uuid_appareil': uuid_appareil,
-            # 'user_id': user_id,
-            # 'senseurs': lectures_senseurs,
-        }
+        if correlation_appareil is not None:
+            lecture_relayee = lecture.copy()
+            lecture_relayee['user_id'] = correlation_appareil.user_id
+            lecture_relayee['uuid_appareil'] = correlation_appareil.uuid_appareil
+            message_enveloppe = {
+                'instance_id': self.etat_senseurspassifs.instance_id,
+                'lecture_relayee': lecture_relayee,
+            }
+        else:
+            message_enveloppe = {
+                'instance_id': self.etat_senseurspassifs.instance_id,
+                'lecture': lecture,
+            }
 
         await producer.emettre_evenement(
             message_enveloppe,
@@ -350,8 +356,8 @@ class WebSocketClientHandler:
             except asyncio.TimeoutError:
                 pass  # OK
 
-    async def transmettre_lecture(self, lecture: dict):
-        await self.server.transmettre_lecture(lecture)
+    async def transmettre_lecture(self, lecture: dict, correlation_appareil):
+        await self.server.transmettre_lecture(lecture, correlation_appareil)
 
 
 class ModuleSenseurWebServer:

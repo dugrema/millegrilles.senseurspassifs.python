@@ -20,28 +20,36 @@ async def handle_message(handler, message: bytes):
     try:
         commande = json.loads(message)
         etat = server.etat_senseurspassifs
-        enveloppe = await etat.validateur_message.verifier(commande)
-
         action = commande['routage']['action']
 
-        print("Recu message %s valide %s" % (action, enveloppe))
+        try:
+            commande['sig']
+            enveloppe = await etat.validateur_message.verifier(commande)
 
-        if action == 'etatAppareil':
-            return await handle_status(handler, commande)
-        elif action == 'getTimezoneInfo':
-            return await handle_get_timezone_info(server, websocket, commande)
-        elif action in ['getAppareilDisplayConfiguration', 'getAppareilProgrammesConfiguration']:
-            return await handle_requete(server, websocket, commande, enveloppe)
-        elif action == 'signerAppareil':
-            return await handle_renouvellement(handler, commande, enveloppe)
-        elif action == 'getFichePublique':
-            return await handle_get_fiche(handler, commande, enveloppe)
-        elif action == 'getRelaisWeb':
-            return await handle_get_relais_web(handler, commande, enveloppe)
-        elif action == 'echangerClesChiffrage':
-            return await handle_echanger_cles_chiffrage(handler, commande, enveloppe)
-        else:
-            logger.error("handle_post_poll Action inconnue %s" % action)
+            if action == 'etatAppareil':
+                return await handle_status(handler, commande)
+            elif action == 'getTimezoneInfo':
+                return await handle_get_timezone_info(server, websocket, commande)
+            elif action in ['getAppareilDisplayConfiguration', 'getAppareilProgrammesConfiguration']:
+                return await handle_requete(server, websocket, commande, enveloppe)
+            elif action == 'signerAppareil':
+                return await handle_renouvellement(handler, commande, enveloppe)
+            elif action == 'getFichePublique':
+                return await handle_get_fiche(handler, commande, enveloppe)
+            elif action == 'getRelaisWeb':
+                return await handle_get_relais_web(handler, commande, enveloppe)
+            elif action == 'echangerClesChiffrage':
+                return await handle_echanger_cles_chiffrage(handler, commande, enveloppe)
+            elif action == 'confirmerRelai':
+                return await handle_confirmer_relai(handler, commande, enveloppe)
+
+        except KeyError:
+            commande['message_chiffre']
+
+            if action == 'etatAppareilRelai':
+                return await handle_relai_status(handler, commande)
+
+        logger.error("handle_post_poll Action inconnue %s" % action)
 
     except Exception as e:
         logger.error("handle_post_poll Erreur %s" % str(e))
@@ -75,15 +83,42 @@ async def handle_status(handler, commande: dict):
 
         return correlation
 
-        # # Verifier si on a une lecture d'appareils en attente
-        # lectures_pending = correlation.take_lectures_pending()
-        # if lectures_pending is not None and correlation.is_message_pending is False:
-        #     # Retourner les lectures en attente
-        #     reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(
-        #         {'ok': True, 'lectures_senseurs': lectures_pending},
-        #         action='lectures_senseurs'
-        #     )
-        #     await websocket.send(json.dumps(reponse).encode('utf-8'))
+    except Exception as e:
+        logger.error("handle_post_poll Erreur %s" % str(e))
+
+
+async def handle_relai_status(handler, commande: dict):
+    server = handler.server
+    try:
+        logger.debug("handle_status Etat recu %s" % commande)
+
+        etat = server.etat_senseurspassifs
+
+        # Trouver la cle de dechiffrage de l'appareil
+        fingerprint = commande['fingerprint']
+        correlation_appareil = server.message_handler.get_correlation_appareil(fingerprint)
+        cle_dechiffrage = correlation_appareil.cle_dechiffrage
+
+        message_chiffre = commande['message_chiffre']
+        message_dechiffre = json.loads(message_chiffre)
+
+        # commande_relayee = {
+        #     'lectures_senseurs': message_dechiffre,
+        #     'instance_id': correlation_appareil.uuid_appareil
+        # }
+
+        # Emettre l'etat de l'appareil (une lecture)
+        await handler.transmettre_lecture(message_dechiffre, correlation_appareil)
+
+        correlation_appareil.touch()
+        try:
+            senseurs = message_dechiffre['senseurs']
+            if senseurs is not None:
+                correlation_appareil.set_senseurs_externes(senseurs)
+        except KeyError:
+            pass
+
+        return correlation_appareil
 
     except Exception as e:
         logger.error("handle_post_poll Erreur %s" % str(e))
@@ -249,3 +284,38 @@ async def handle_echanger_cles_chiffrage(handler, commande: dict, enveloppe):
     reponse_bytes = json.dumps(reponse).encode('utf-8')
     await websocket.send(reponse_bytes)
 
+
+async def handle_confirmer_relai(handler, commande: dict, enveloppe):
+    # Verifier que la commande est bien pour le certificat local
+    server = handler.server
+    websocket = handler.websocket
+    etat = server.etat_senseurspassifs
+    fingerprint = enveloppe.fingerprint
+
+    try:
+        # Transmettre la commande de confirmation vers le domaine SenseursPassifs
+        # Va permettre de faire le relai de l'etat du senseur via signature locale
+        if commande['routage']['action'] != 'confirmerRelai' or commande['routage']['domaine'] != 'SenseursPassifs':
+            raise Exception('handle_confirmer_relai: mauvais domaine/action pour commande confirmation : %s' % commande['routage'])
+
+        producer = etat.producer
+        await asyncio.wait_for(producer.producer_pret().wait(), 1)
+        await producer.executer_commande(commande, 'SenseursPassifs', 'confirmerRelai', Constantes.SECURITE_PRIVE,
+                                         noformat=True, timeout=5)
+
+        # Tout est pret, le relai peut maintenant signer le contenu du client
+        server.message_handler.activer_relai_messages(fingerprint)
+
+    except:
+        logger.exception("Erreur confirmation relai avec domaine, desactiver chiffrage avec microcontrolleur")
+        server.message_handler.clear_chiffrage(fingerprint)
+        # Desactiver le chiffrage avec le client
+        reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(
+            Constantes.KIND_COMMANDE, dict(), action='resetSecret')
+        reponse_bytes = json.dumps(reponse).encode('utf-8')
+        await websocket.send(reponse_bytes)
+
+    # reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(
+    #     Constantes.KIND_COMMANDE, reponse, action='echangerSecret')
+
+    pass
