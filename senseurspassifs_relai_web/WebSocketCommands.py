@@ -153,19 +153,26 @@ async def handle_get_timezone_info(server, websocket, correlation_appareil, requ
         timezone_str = reponse_usager.parsed['timezone']
         reponse['timezone'] = timezone_str
     except (KeyError, asyncio.TimeoutError):
-        timezone_str = requete['timezone']
+        try:
+            timezone_str = requete['timezone']
+        except KeyError:
+            timezone_str = None
 
-    try:
-        now = datetime.datetime.utcnow()
-        # timezone_str = requete['timezone']
-        timezone_pytz = pytz.timezone(timezone_str)
-        offset = timezone_pytz.utcoffset(now)
-        offset_seconds = int(offset.total_seconds())
-        reponse['timezone_offset'] = offset_seconds
-    except pytz.exceptions.UnknownTimeZoneError:
-        logger.error("Timezone %s inconnue" % timezone_str)
-    except KeyError:
-        pass  # OK, pas de timezone
+    if timezone_str:
+        try:
+            now = datetime.datetime.utcnow()
+            # timezone_str = requete['timezone']
+            timezone_pytz = pytz.timezone(timezone_str)
+            offset = timezone_pytz.utcoffset(now)
+            offset_seconds = int(offset.total_seconds())
+            reponse['timezone_offset'] = offset_seconds
+        except pytz.exceptions.UnknownTimeZoneError:
+            logger.error("Timezone %s inconnue" % timezone_str)
+        except KeyError:
+            # pas de timezone
+            reponse['ok'] = False
+    else:
+        reponse['ok'] = False
 
     reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(Constantes.KIND_COMMANDE, reponse, action='timezoneInfo')
 
