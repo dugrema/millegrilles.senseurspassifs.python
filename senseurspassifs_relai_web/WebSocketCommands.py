@@ -138,12 +138,26 @@ async def handle_relai_status(handler, correlation_appareil, commande: dict):
 
 
 async def handle_get_timezone_info(server, websocket, correlation_appareil, requete: dict):
+    etat = server.etat_senseurspassifs
+    producer = etat.producer
+
     reponse = {'ok': True}
 
-    timezone_str = None
+    # timezone_str = None
+    user_id = correlation_appareil.user_id
+
+    try:
+        requete_usager = {'user_id': user_id}
+        reponse_usager = await producer.executer_requete(
+            requete_usager, 'SenseursPassifs', 'getConfigurationUsager', exchange=Constantes.SECURITE_PRIVE, timeout=3)
+        timezone_str = reponse_usager.parsed['timezone']
+        reponse['timezone'] = timezone_str
+    except (KeyError, asyncio.TimeoutError):
+        timezone_str = requete['timezone']
+
     try:
         now = datetime.datetime.utcnow()
-        timezone_str = requete['timezone']
+        # timezone_str = requete['timezone']
         timezone_pytz = pytz.timezone(timezone_str)
         offset = timezone_pytz.utcoffset(now)
         offset_seconds = int(offset.total_seconds())
