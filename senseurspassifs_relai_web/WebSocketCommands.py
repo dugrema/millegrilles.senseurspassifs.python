@@ -189,14 +189,49 @@ async def handle_get_relais_web(handler, correlation_appareil):
     fiche = dict(etat.fiche_publique)
     if fiche is not None:
         try:
-            url_relais = [app['url'] for app in fiche['applications']['senseurspassifs_relai'] if
-                          app['nature'] == 'dns']
+            url_relais = parse_fiche_relais(fiche)
+
+            # url_relais = [app['url'] for app in fiche['applications']['senseurspassifs_relai'] if
+            #               app['nature'] == 'dns']
+
             reponse = {'relais': url_relais}
             reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(Constantes.KIND_COMMANDE, reponse, action='relaisWeb')
             attacher_reponse_chiffree(correlation_appareil, reponse, enveloppe=None)
             await websocket.send(json.dumps(reponse).encode('utf-8'))
         except KeyError:
             pass  # OK, pas de timezone
+
+
+def parse_fiche_relais(fiche: dict):
+    app_instance_pathname = dict()
+    for instance_id, app_params in fiche['applicationsV2']['senseurspassifs_relai']['instances'].items():
+        try:
+            app_instance_pathname[instance_id] = app_params['pathname']
+            logger.debug("instance_id %s pathname %s" % (instance_id, app_params['pathname']))
+        except KeyError:
+            pass
+
+    logger.debug("relais %d instances" % len(app_instance_pathname))
+
+    url_relais = list()
+    for instance_id, instance_params in fiche['instances'].items():
+        try:
+            pathname = app_instance_pathname[instance_id]
+        except KeyError:
+            continue  # Pas de path
+
+        try:
+            port = instance_params['ports']['https']
+        except KeyError:
+            port = 443
+
+        try:
+            for domaine in instance_params['domaines']:
+                url_relais.append(f'https://{domaine}:{port}{pathname}')
+        except KeyError:
+            pass
+
+    return url_relais
 
 
 async def handle_requete(server, websocket, correlation_appareil, requete: dict, enveloppe):
