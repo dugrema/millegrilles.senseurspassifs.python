@@ -4,6 +4,9 @@ import json
 import logging
 import pytz
 
+from astral import LocationInfo
+from astral.sun import sun
+
 from cryptography.exceptions import InvalidSignature
 
 from millegrilles_messages.messages import Constantes
@@ -174,11 +177,35 @@ async def handle_get_timezone_info(server, websocket, correlation_appareil, requ
     else:
         reponse['ok'] = False
 
+    if reponse.get('ok') is True:
+        # Verifier si on retourne l'information de l'horaire solaire de la journee
+        if isinstance(requete.get('latitude'), (float, int)) and isinstance(requete.get('longitude'), (float, int)):
+            reponse['horaire_solaire'] = calculer_horaire_solaire(requete)
+
     reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(Constantes.KIND_COMMANDE, reponse, action='timezoneInfo')
 
     attacher_reponse_chiffree(correlation_appareil, reponse, enveloppe=None)
 
     await websocket.send(json.dumps(reponse).encode('utf-8'))
+
+
+def calculer_horaire_solaire(parametres: dict):
+    latitude = parametres['latitude']
+    longitude = parametres['longitude']
+
+    location_info = LocationInfo("ici", "ici", "UTC", latitude, longitude)
+
+    today = datetime.datetime.now().date()
+    vals = ['dawn', 'sunrise', 'noon', 'sunset', 'dusk']
+
+    s = sun(location_info.observer, date=today, tzinfo="UTC")
+
+    # Convertir les valeurs en timestamps (epoch secs)
+    timestamp_vals = dict()
+    for val in vals:
+        timestamp_vals[val] = int(s[val].timestamp())
+
+    return timestamp_vals
 
 
 async def handle_get_relais_web(handler, correlation_appareil):
