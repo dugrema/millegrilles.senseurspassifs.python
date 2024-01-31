@@ -177,10 +177,10 @@ async def handle_get_timezone_info(server, websocket, correlation_appareil, requ
     else:
         reponse['ok'] = False
 
-    if reponse.get('ok') is True:
-        # Verifier si on retourne l'information de l'horaire solaire de la journee
-        if isinstance(requete.get('latitude'), (float, int)) and isinstance(requete.get('longitude'), (float, int)):
-            reponse['horaire_solaire'] = calculer_horaire_solaire(requete)
+    # Verifier si on retourne l'information de l'horaire solaire de la journee
+    if isinstance(requete.get('latitude'), (float, int)) and isinstance(requete.get('longitude'), (float, int)):
+        reponse['solaire_utc'] = calculer_horaire_solaire(requete)
+        reponse['ok'] = True
 
     reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(Constantes.KIND_COMMANDE, reponse, action='timezoneInfo')
 
@@ -203,7 +203,10 @@ def calculer_horaire_solaire(parametres: dict):
     # Convertir les valeurs en timestamps (epoch secs)
     timestamp_vals = dict()
     for val in vals:
-        timestamp_vals[val] = int(s[val].timestamp())
+        # Convertir le temps en liste [heure UTC, minute]
+        temps_solaire = s[val]
+        heure_list = [temps_solaire.hour, temps_solaire.minute]
+        timestamp_vals[val] = heure_list
 
     return timestamp_vals
 
