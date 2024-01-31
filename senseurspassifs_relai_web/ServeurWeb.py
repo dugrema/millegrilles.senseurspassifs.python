@@ -8,7 +8,7 @@ from aiohttp import web
 from asyncio import Event
 from asyncio.exceptions import TimeoutError
 from typing import Optional
-from websockets import serve, ConnectionClosedError, ConnectionClosedOK
+from websockets import serve, ConnectionClosedError
 
 from . import HttpCommands
 from .WebSocketCommands import handle_message
@@ -191,7 +191,7 @@ class ServeurWebSocket:
             producer = self.etat_senseurspassifs.producer
             if producer is not None:
                 try:
-                    await asyncio.wait_for(producer.producer_pret().wait(), 5000)
+                    await asyncio.wait_for(producer.producer_pret().wait(), 5)
                     idmg = self.etat_senseurspassifs.clecertificat.enveloppe.idmg
                     requete = {'idmg': idmg}
                     reponse = await producer.executer_requete(
