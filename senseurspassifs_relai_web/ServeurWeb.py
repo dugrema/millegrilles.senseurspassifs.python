@@ -276,6 +276,7 @@ class WebSocketClientHandler:
         self.__presence_emise: Optional[datetime.datetime] = None
         self.__uuid_appareil: Optional[str] = None
         self.__user_id: Optional[str] = None
+        self.__version: Optional[str] = None
 
     @property
     def server(self):
@@ -289,13 +290,16 @@ class WebSocketClientHandler:
         self.__uuid_appareil = uuid_appareil
         self.__user_id = user_id
 
+    def set_version(self, version: str):
+        self.__version = version
+
     async def presence_appareil(self, deconnecte=False):
         evenement = None
         if self.__uuid_appareil and self.__user_id:
             if deconnecte is True:
                 evenement = {'uuid_appareil': self.__uuid_appareil, 'user_id': self.__user_id, 'deconnecte': True}
             elif self.__presence_emise is None:
-                evenement = {'uuid_appareil': self.__uuid_appareil, 'user_id': self.__user_id}
+                evenement = {'uuid_appareil': self.__uuid_appareil, 'user_id': self.__user_id, 'version': self.__version}
 
         if evenement:
             producer = self.__server.etat_senseurspassifs.producer

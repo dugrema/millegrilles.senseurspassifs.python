@@ -148,6 +148,27 @@ async def handle_relai_status(handler, correlation_appareil, commande: dict):
         logger.error("handle_post_poll Erreur %s" % str(e))
 
 
+def calculer_transition_tz(tz):
+    transition_times = tz._utc_transition_times
+    now = datetime.datetime.now()
+    current_offset_secs = int(tz.utcoffset(now).total_seconds())
+
+    next_transition = None
+    for next_transition in transition_times:
+        if next_transition > now:
+            break
+
+    reponse = {'timezone_offset': current_offset_secs}
+
+    if next_transition:
+        next_transition_secs = int(next_transition.timestamp())
+        next_offset_secs = int(tz.utcoffset(next_transition).total_seconds())
+        reponse['transition_time'] = next_transition_secs
+        reponse['transition_offset'] = next_offset_secs
+
+    return reponse
+
+
 async def handle_get_timezone_info(server, websocket, correlation_appareil, requete: dict):
     etat = server.etat_senseurspassifs
     producer = etat.producer
@@ -156,27 +177,34 @@ async def handle_get_timezone_info(server, websocket, correlation_appareil, requ
 
     # timezone_str = None
     user_id = correlation_appareil.user_id
+    timezone_str = None
 
     try:
         requete_usager = {'user_id': user_id}
         reponse_usager = await producer.executer_requete(
             requete_usager, 'SenseursPassifs', 'getConfigurationUsager', exchange=Constantes.SECURITE_PRIVE, timeout=3)
         timezone_str = reponse_usager.parsed['timezone']
-        reponse['timezone'] = timezone_str
     except (KeyError, asyncio.TimeoutError):
+        pass
+
+    if timezone_str is None:
         try:
             timezone_str = requete['timezone']
+            reponse['timezone'] = timezone_str
         except KeyError:
             timezone_str = None
 
     if timezone_str:
+        reponse['timezone'] = timezone_str
         try:
-            now = datetime.datetime.utcnow()
+            # now = datetime.datetime.utcnow()
             # timezone_str = requete['timezone']
             timezone_pytz = pytz.timezone(timezone_str)
-            offset = timezone_pytz.utcoffset(now)
-            offset_seconds = int(offset.total_seconds())
-            reponse['timezone_offset'] = offset_seconds
+            # offset = timezone_pytz.utcoffset(now)
+            # offset_seconds = int(offset.total_seconds())
+            # reponse['timezone_offset'] = offset_seconds
+            info_tz = calculer_transition_tz(timezone_pytz)
+            reponse.update(info_tz)
         except pytz.exceptions.UnknownTimeZoneError:
             logger.error("Timezone %s inconnue" % timezone_str)
         except KeyError:
@@ -385,6 +413,12 @@ async def handle_echanger_cles_chiffrage(handler, correlation_appareil, commande
     await handler.set_correlation(correlation)
 
     contenu = json.loads(commande['contenu'])
+
+    try:
+        version = contenu['version']
+        handler.set_version(version)
+    except (AttributeError, KeyError):
+        logger.debug("Version non disponible")
 
     # Valider enveloppe, doit correspondre a l'appareil authentifie
     logger.debug("handle_echanger_cles_chiffrage commande : %s" % commande)
