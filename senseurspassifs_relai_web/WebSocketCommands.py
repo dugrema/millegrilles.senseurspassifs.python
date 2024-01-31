@@ -21,6 +21,7 @@ async def handle_message(handler, message: bytes):
     server = handler.server
     websocket = handler.websocket
 
+    # Extraire information de l'enveloppe du message
     try:
         commande = json.loads(message)
         etat = server.etat_senseurspassifs
@@ -36,6 +37,13 @@ async def handle_message(handler, message: bytes):
         try:
             commande['sig']  # Verifier que l'element sig est present (message non chiffre)
             enveloppe = await etat.validateur_message.verifier(commande)
+
+            try:
+                uuid_appareil = enveloppe.subject_common_name
+                user_id = enveloppe.get_user_id
+                handler.set_params_appareil(uuid_appareil, user_id)
+            except AttributeError:
+                logger.exception("Erreur set_params_appareils")
 
             if action == 'etatAppareil':
                 return await handle_status(handler, correlation_appareil, commande)

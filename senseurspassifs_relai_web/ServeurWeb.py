@@ -273,6 +273,10 @@ class WebSocketClientHandler:
         self.__event_correlation = asyncio.Event()
         self.__date_connexion = datetime.datetime.utcnow()
 
+        self.__presence_emise: Optional[datetime.datetime] = None
+        self.__uuid_appareil: Optional[str] = None
+        self.__user_id: Optional[str] = None
+
     @property
     def server(self):
         return self.__server
@@ -281,17 +285,49 @@ class WebSocketClientHandler:
     def websocket(self):
         return self.__websocket
 
+    def set_params_appareil(self, uuid_appareil: str, user_id: str):
+        self.__uuid_appareil = uuid_appareil
+        self.__user_id = user_id
+
+    async def presence_appareil(self, deconnecte=False):
+        evenement = None
+        if self.__uuid_appareil and self.__user_id:
+            if deconnecte is True:
+                evenement = {'uuid_appareil': self.__uuid_appareil, 'user_id': self.__user_id, 'deconnecte': True}
+            elif self.__presence_emise is None:
+                evenement = {'uuid_appareil': self.__uuid_appareil, 'user_id': self.__user_id}
+
+        if evenement:
+            producer = self.__server.etat_senseurspassifs.producer
+            if producer is None:
+                self.__logger.debug("Producer n'est pas pret, lecture n'est pas transmise")
+                return
+
+            try:
+                await asyncio.wait_for(producer.producer_pret().wait(), 1)
+            except TimeoutError:
+                self.__logger.debug("Producer MQ pas pret, abort transmission")
+                return
+
+            await producer.emettre_evenement(evenement,
+                                             domaine='senseurspassifs_relai',
+                                             action='presenceAppareil',
+                                             exchanges=Constantes.SECURITE_PRIVE)
+
+            self.__presence_emise = datetime.datetime.now()
+
     async def set_correlation(self, correlation):
         self.__correlation = correlation
         self.__event_correlation.set()
 
     async def run(self):
+        self.__logger.debug("run Connexion client %s" % self.__correlation)
         await asyncio.gather(
             self.recevoir_messages(),
             self.relai_messages(),
             self.relai_lectures(),
         )
-        self.__logger.debug("Fin run connexion %s" % self.__date_connexion)
+        self.__logger.debug("run Fin connexion %s/%s" % (self.__correlation, self.__date_connexion))
 
     async def recevoir_messages(self):
         self.__logger.debug("Connexion '%s'" % self.__date_connexion)
@@ -299,11 +335,20 @@ class WebSocketClientHandler:
         try:
             async for message in self.__websocket:
                 await handle_message(self, message)
+                try:
+                    await self.presence_appareil()
+                except Exception:
+                    self.__logger.exception("recevoir_messages Erreur emettre presence appareil")
 
         except ConnectionClosedError:
             self.__logger.debug("Connexion %s fermee incorrectement" % self.__date_connexion)
         finally:
             self.__event_correlation.set()  # Cleanup
+
+        try:
+            await self.presence_appareil(deconnecte=True)
+        except Exception:
+            self.__logger.exception("recevoir_messages Erreur emettre presence appareil")
 
         self.__logger.debug("Fin connexion '%s'" % self.__date_connexion)
 
