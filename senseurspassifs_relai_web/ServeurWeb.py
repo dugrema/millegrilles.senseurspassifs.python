@@ -440,6 +440,7 @@ class ModuleSenseurWebServer:
             'evenement.SenseursPassifs.*.evenementMajDisplays',
             'evenement.SenseursPassifs.*.evenementMajProgrammes',
             'evenement.SenseursPassifs.*.lectureConfirmee',
+            'evenement.SenseursPassifs.*.majConfigurationAppareil',
             (Constantes.SECURITE_PUBLIC, 'evenement.CoreTopologie.fichePublique'),
         ]
 

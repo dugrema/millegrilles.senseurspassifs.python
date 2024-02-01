@@ -154,14 +154,18 @@ def calculer_transition_tz(tz):
     current_offset_secs = int(tz.utcoffset(now).total_seconds())
 
     next_transition = None
-    for next_transition in transition_times:
-        if next_transition > now:
+    for transition in transition_times:
+        if transition > now:
+            next_transition = transition
             break
 
     reponse = {'timezone_offset': current_offset_secs}
 
     if next_transition:
-        next_transition_secs = int(next_transition.timestamp())
+        timestamp_utc = datetime.datetime(
+            next_transition.year, next_transition.month, next_transition.day,
+            next_transition.hour, next_transition.minute, tzinfo=pytz.UTC)
+        next_transition_secs = int(timestamp_utc.timestamp())
         next_offset_secs = int(tz.utcoffset(next_transition).total_seconds())
         reponse['transition_time'] = next_transition_secs
         reponse['transition_offset'] = next_offset_secs
@@ -176,16 +180,31 @@ async def handle_get_timezone_info(server, websocket, correlation_appareil, requ
     reponse = {'ok': True}
 
     # timezone_str = None
+    uuid_appareil = correlation_appareil.uuid_appareil
     user_id = correlation_appareil.user_id
     timezone_str = None
+    geoposition = None
+
+    # try:
+    #     requete_usager = {'user_id': user_id}
+    #     reponse_usager = await producer.executer_requete(
+    #         requete_usager, 'SenseursPassifs', 'getConfigurationUsager', exchange=Constantes.SECURITE_PRIVE, timeout=3)
+    #     timezone_str = reponse_usager.parsed['timezone']
+    # except (KeyError, asyncio.TimeoutError):
+    #     pass
 
     try:
-        requete_usager = {'user_id': user_id}
-        reponse_usager = await producer.executer_requete(
-            requete_usager, 'SenseursPassifs', 'getConfigurationUsager', exchange=Constantes.SECURITE_PRIVE, timeout=3)
-        timezone_str = reponse_usager.parsed['timezone']
-    except (KeyError, asyncio.TimeoutError):
+        requete_appareil = {'user_id': user_id, 'uuid_appareil': uuid_appareil}
+        reponse_appareil = await producer.executer_requete(
+            requete_appareil, 'SenseursPassifs', 'getTimezoneAppareil', exchange=Constantes.SECURITE_PRIVE, timeout=3)
+        timezone_str = reponse_appareil.parsed.get('timezone')
+        geoposition = reponse_appareil.parsed.get('geoposition') or dict()
+    except asyncio.TimeoutError:
         pass
+
+    # Note : les valeurs fournies dans la requete viennent de l'appareil (e.g. GPS, override)
+    latitude = requete.get('latitude') or geoposition.get('latitude')
+    longitude = requete.get('longitude') or geoposition.get('longitude')
 
     if timezone_str is None:
         try:
@@ -214,8 +233,10 @@ async def handle_get_timezone_info(server, websocket, correlation_appareil, requ
         reponse['ok'] = False
 
     # Verifier si on retourne l'information de l'horaire solaire de la journee
-    if isinstance(requete.get('latitude'), (float, int)) and isinstance(requete.get('longitude'), (float, int)):
-        reponse['solaire_utc'] = calculer_horaire_solaire(requete)
+    if isinstance(latitude, (float, int)) and isinstance(longitude, (float, int)):
+        reponse['latitude'] = latitude
+        reponse['longitude'] = longitude
+        reponse['solaire_utc'] = calculer_horaire_solaire(latitude, longitude)
         reponse['ok'] = True
 
     reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(Constantes.KIND_COMMANDE, reponse, action='timezoneInfo')
@@ -225,9 +246,7 @@ async def handle_get_timezone_info(server, websocket, correlation_appareil, requ
     await websocket.send(json.dumps(reponse).encode('utf-8'))
 
 
-def calculer_horaire_solaire(parametres: dict):
-    latitude = parametres['latitude']
-    longitude = parametres['longitude']
+def calculer_horaire_solaire(latitude, longitude):
 
     location_info = LocationInfo("ici", "ici", "UTC", latitude, longitude)
 
