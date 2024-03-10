@@ -28,7 +28,8 @@ async def scan():
     etat_uuid = services_metadata['etat']['uuid']
     service_uuids = [commandes_uuid, etat_uuid]
 
-    devices = await BleakScanner.discover(service_uuids=service_uuids)
+    # devices = await BleakScanner.discover(service_uuids=service_uuids)
+    devices = await BleakScanner.discover(timeout=15.0, service_uuids=service_uuids)
 
     for d in devices:
         LOGGER.debug("Device %s", d)
