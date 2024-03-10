@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import json
 import logging
 import struct
@@ -53,13 +54,14 @@ async def parse_device(device):
 async def afficher_etat(client, gatt_service: BleakGATTServiceCollection):
     uuid_characteristics = CONST_SERVICES['services']['etat']['characteristics']
     for characteristic in gatt_service.characteristics:
-        # LOGGER.debug("Characteristic %s", characteristic)
         if characteristic.uuid == uuid_characteristics['getUserId']:
             await get_user_id(client, characteristic)
         elif characteristic.uuid == uuid_characteristics['getIdmg']:
             await get_idmg(client, characteristic)
         elif characteristic.uuid == uuid_characteristics['getWifi']:
             await get_wifi(client, characteristic)
+        elif characteristic.uuid == uuid_characteristics['getLectures']:
+            await get_lectures(client, characteristic)
         else:
             LOGGER.warning("Characteristic non geree %s", characteristic.uuid)
 
@@ -80,18 +82,6 @@ async def get_user_id(client, characteristic):
 
 async def get_wifi(client, characteristic):
     resultat = await client.read_gatt_char(characteristic)
-
-    #     const connected = value.getUint8(0) === 1,
-    #           status = value.getUint8(1),
-    #           channel = value.getUint8(2)
-    #     const adressesSlice = value.buffer.slice(3, 19)
-    #     const adressesList = new Uint8Array(adressesSlice)
-    #     const ip = convertirBytesIp(adressesList.slice(0, 4))
-    #     const subnet = convertirBytesIp(adressesList.slice(4, 8))
-    #     const gateway = convertirBytesIp(adressesList.slice(8, 12))
-    #     const dns = convertirBytesIp(adressesList.slice(12, 16))
-    #
-    #     const ssidBytes = value.buffer.slice(19)
     CHAMP_PACK_WIFI = '<BBB4s4s4s4s'  # 19 bytes
     valeurs = struct.unpack(CHAMP_PACK_WIFI, resultat[:19])
     wifi_ap = resultat[19:].decode('utf-8')
@@ -99,12 +89,51 @@ async def get_wifi(client, characteristic):
     ip_client = ipaddress.IPv4Address(valeurs[3])
     ip_netmask = ipaddress.IPv4Address(valeurs[4])
     ip_gateway = ipaddress.IPv4Address(valeurs[5])
-    LOGGER.debug("WIFI : ip client %s, netmask %s, gateway %s", ip_client, ip_netmask, ip_gateway)
-    return resultat
+    dns_gateway = ipaddress.IPv4Address(valeurs[6])
+    LOGGER.debug("WIFI : ip client %s, netmask %s, gateway %s, dns %s", ip_client, ip_netmask, ip_gateway, dns_gateway)
 
 
-async def get_wifi2(client, characteristic):
+async def get_lectures(client, characteristic):
     resultat = await client.read_gatt_char(characteristic)
+
+    # encoded_lectures = struct.pack('<BIhhhB', rtc, time_val, temperature_1, temperature_2, humidite, switch_encoding)
+    rtc, time_val, temperature_1, temperature_2, humidite, switch_encoding = struct.unpack('<BIhhhB', resultat)
+    LOGGER.debug("Time %s (RTC: %s)", datetime.datetime.fromtimestamp(time_val), rtc)
+
+    if temperature_2 is not None:
+        temperature_2 = temperature_2 / 100
+        temperature_1 = temperature_1 / 100
+        LOGGER.debug("Temperatures 1: %sC, 2: %sC", temperature_1, temperature_2)
+    elif temperature_1 is not None:
+        temperature_1 = temperature_1 / 100
+        LOGGER.debug("Temperature 1: %sC", temperature_1)
+
+    if humidite is not None:
+        humidite = humidite / 10
+        LOGGER.debug("Humidite: %s%%", humidite)
+
+    # Switch decoding - une switch est 2 bits
+    bools_switch = unpack_bools(switch_encoding)
+    # LOGGER.debug("Bools switch %s", bools_switch)
+    for i in range(0, 4):
+        if bools_switch[i*2] is True:
+            LOGGER.debug("Switch %d = %s", i, bools_switch[i*2+1])
+
+
+def unpack_bools(val) -> list[bool]:
+    """
+    Pack jusqu'a 8 bools dans un seul byte
+    """
+
+    bool_vals = list()
+
+    for i in range(0, 8):
+        masque = 1 << i
+        val_masquee = val & masque
+        courant = val_masquee > 0
+        bool_vals.append(courant)
+
+    return bool_vals
 
 
 if __name__ == '__main__':
