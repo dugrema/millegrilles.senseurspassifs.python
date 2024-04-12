@@ -375,13 +375,16 @@ async def handle_renouvellement(handler, correlation_appareil, commande: dict, e
         # S'assurer d'avoir un appareil de role senseurspassifs
         if user_id is None or 'senseurspassifs' not in enveloppe.get_roles:
             logger.info("handle_renouvellement Role certificat renouvellement invalide : %s" % enveloppe.get_roles)
+            return  # Skip
 
         routage = commande['routage']
         try:
             if routage['action'] != 'signerAppareil' or routage['domaine'] != 'SenseursPassifs':
                 logger.info("handle_renouvellement Action/domaine certificat renouvellement invalide")
+                return  # Skip
         except KeyError:
             logger.info("handle_renouvellement Action/domaine certificat renouvellement invalide")
+            return  # Skip
 
         # Faire le relai de la commande - CorePki/certissuer s'occupent des renouvellements de certs actifs
         producer = etat.producer

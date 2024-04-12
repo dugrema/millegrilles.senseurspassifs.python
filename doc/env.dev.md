@@ -20,9 +20,7 @@ Utiliser l'application web senseurspassifs pour generer un fichier de configurat
 Exemple : 
 {
   "idmg": "zZgJ8CG9YKqpYg7V3Fm3k9DHzxqytR4hbA58YxTLr7QrpB22DiQgebsx",
-  "user_id": "z2i3Xjx9ovNcu1reixSkeyWqSCS98pMFJtfwBo8iEHa8RUSpjjf",
-  "http_instance": "https://ort2",
-  "http_timeout": 25
+  "user_id": "z2i3Xjx9ovNcu1reixSkeyWqSCS98pMFJtfwBo8iEHa8RUSpjjf"
 }
 
 Installer le contenu sous : /var/opt/millegrilles/configuration/senseurspassifs_relai.json
