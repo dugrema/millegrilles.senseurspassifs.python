@@ -197,7 +197,7 @@ class ApplicationInstance:
             asyncio.create_task(self.entretien(), name="entretien"),
             asyncio.create_task(self.__rabbitmq_dao.run(), name="mq"),
             asyncio.create_task(self._senseur_modules_handler.run(), name="senseur_modules"),
-            self.__attendre_fermer()
+            asyncio.create_task(self.__attendre_fermer())
         ]
 
         # Execution de la loop avec toutes les tasks

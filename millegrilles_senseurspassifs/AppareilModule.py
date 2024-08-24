@@ -83,7 +83,7 @@ class AppareilHandler:
 
             idmg = cle_certificat.enveloppe.idmg
             signateur_transactions = SignateurTransactionSimple(self.__cle_certificat_appareil)
-            self.__formatteur_message_appareil = FormatteurMessageMilleGrilles(idmg, signateur_transactions)
+            self.__formatteur_message_appareil = FormatteurMessageMilleGrilles(idmg, signateur_transactions, self._etat_senseurspassifs.certificat_millegrille)
 
         except Exception as e:
             # Certificat absent ou invalide, cleanup
@@ -157,7 +157,7 @@ class AppareilHandler:
             self.__cle_csr = None
             self.__cle_certificat_appareil = CleCertificat.from_pems(cle_pem, certificat)
             signateur_transactions = SignateurTransactionSimple(self.__cle_certificat_appareil)
-            self.__formatteur_message_appareil = FormatteurMessageMilleGrilles(idmg, signateur_transactions)
+            self.__formatteur_message_appareil = FormatteurMessageMilleGrilles(idmg, signateur_transactions, self._etat_senseurspassifs.certificat_millegrille)
 
         except Exception:
             # Attendre la reponse - raise timeout

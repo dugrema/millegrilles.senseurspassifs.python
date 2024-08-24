@@ -75,7 +75,7 @@ class EtatSenseursPassifs:
                 await self.__validateur_certificats.valider(self.__clecertificat.enveloppe.chaine_pem())
 
                 signateur = SignateurTransactionSimple(self.__clecertificat)
-                self.__formatteur_message = FormatteurMessageMilleGrilles(idmg, signateur)
+                self.__formatteur_message = FormatteurMessageMilleGrilles(idmg, signateur, self.__certificat_millegrille)
                 self.__validateur_message = ValidateurMessageControleur(self.__validateur_certificats)
             except Exception:
                 self.__logger.exception("Certificat invalide/expire")
@@ -160,3 +160,7 @@ class EtatSenseursPassifs:
     @property
     def fiche_publique(self):
         return self.__fiche_publique
+
+    @property
+    def certificat_millegrille(self):
+        return self.__certificat_millegrille
