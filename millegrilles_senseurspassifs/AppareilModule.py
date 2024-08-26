@@ -103,6 +103,13 @@ class AppareilHandler:
                 # Pas de cert et producer n'est pas pret
                 self.__logger.warning("Aucun certificat d'appareil disponible - doit etre genere")
 
+    @property
+    def uuid_appareil(self):
+        enveloppe_relai = self._etat_senseurspassifs.clecertificat.enveloppe
+        instance_id = enveloppe_relai.subject_common_name
+        ou_id = self._etat_senseurspassifs.clecertificat.enveloppe.subject_organizational_unit_name
+        return '%s_%s' % (instance_id, ou_id)
+
     async def generer_certificat_appareil(self):
         user_id = self._etat_senseurspassifs.user_id
         if user_id is None:
@@ -111,6 +118,7 @@ class AppareilHandler:
         # Charger information de l'instance
         enveloppe_relai = self._etat_senseurspassifs.clecertificat.enveloppe
         instance_id = enveloppe_relai.subject_common_name
+        uuid_appareil = self.uuid_appareil
         idmg = enveloppe_relai.idmg
 
         if self.__cle_csr is None:
@@ -126,7 +134,7 @@ class AppareilHandler:
 
         commande = {
             'csr': csr_pem,
-            'uuid_appareil': instance_id,
+            'uuid_appareil': uuid_appareil,
             'user_id': user_id,
             'instance_id': instance_id,
             'cle_publique': cle_publique,
@@ -154,7 +162,7 @@ class AppareilHandler:
             with open(self._etat_senseurspassifs.configuration.key_appareil_pem_path, 'w') as fichier:
                 fichier.write(cle_pem)
 
-            self.__cle_csr = None
+            # self.__cle_csr = None
             self.__cle_certificat_appareil = CleCertificat.from_pems(cle_pem, certificat)
             signateur_transactions = SignateurTransactionSimple(self.__cle_certificat_appareil)
             self.__formatteur_message_appareil = FormatteurMessageMilleGrilles(idmg, signateur_transactions, self._etat_senseurspassifs.certificat_millegrille)
@@ -291,8 +299,9 @@ class AppareilHandler:
             self.__logger.debug("Producer MQ pas pret, abort transmission")
             return
 
+        uuid_appareil = self.uuid_appareil
         message_reformatte = {
-            'uuid_appareil': message['instance_id'],
+            'uuid_appareil': uuid_appareil,
             'lectures_senseurs': message['senseurs'],
         }
         try:
