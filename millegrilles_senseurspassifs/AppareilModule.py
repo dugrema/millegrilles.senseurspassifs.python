@@ -107,8 +107,15 @@ class AppareilHandler:
     def uuid_appareil(self):
         enveloppe_relai = self._etat_senseurspassifs.clecertificat.enveloppe
         instance_id = enveloppe_relai.subject_common_name
-        ou_id = self._etat_senseurspassifs.clecertificat.enveloppe.subject_organizational_unit_name
-        return '%s_%s' % (instance_id, ou_id)
+        try:
+            if enveloppe_relai.get_exchanges is not None:
+                # This is an internal device, ensure a unique name using its purpose
+                ou_id = self._etat_senseurspassifs.clecertificat.enveloppe.subject_organizational_unit_name
+                return '%s_%s' % (instance_id, ou_id)
+        except:
+            pass
+
+        return instance_id
 
     async def generer_certificat_appareil(self):
         user_id = self._etat_senseurspassifs.user_id
