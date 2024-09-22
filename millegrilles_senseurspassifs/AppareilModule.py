@@ -87,7 +87,7 @@ class AppareilHandler:
 
         except Exception as e:
             # Certificat absent ou invalide, cleanup
-            self.__logger.exception("Certificat appareil absent ou invalide")
+            self.__logger.info("Certificat appareil absent ou invalide - le relai n'apparaitra pas comme un appareil")
             try:
                 os.remove(path_cert_appareil)
             except FileNotFoundError:
@@ -107,15 +107,16 @@ class AppareilHandler:
     def uuid_appareil(self):
         enveloppe_relai = self._etat_senseurspassifs.clecertificat.enveloppe
         instance_id = enveloppe_relai.subject_common_name
+        ou_id = self._etat_senseurspassifs.clecertificat.enveloppe.subject_organizational_unit_name
         try:
-            if enveloppe_relai.get_exchanges is not None:
-                # This is an internal device, ensure a unique name using its purpose
-                ou_id = self._etat_senseurspassifs.clecertificat.enveloppe.subject_organizational_unit_name
-                return '%s_%s' % (instance_id, ou_id)
+            if 'senseurspassifs' not in enveloppe_relai.get_roles:
+                # This is a senseurspassifs device, ensure a unique name using its purpose
+                return instance_id
         except:
             pass
 
-        return instance_id
+        # This is not a senseurspassifs device, ensure a unique name using its purpose
+        return '%s_%s' % (instance_id, ou_id)
 
     async def generer_certificat_appareil(self):
         user_id = self._etat_senseurspassifs.user_id

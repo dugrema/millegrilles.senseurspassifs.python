@@ -86,10 +86,10 @@ async def handle_message(handler, message: bytes):
                     Constantes.KIND_COMMANDE, dict(), action='resetSecret')
                 await websocket.send(json.dumps(reponse).encode('utf-8'))
 
-        logger.error("handle_post_poll Action inconnue %s" % action)
+        logger.error("handle_message Action inconnue %s" % action)
 
     except Exception as e:
-        logger.error("handle_post_poll Erreur %s" % str(e))
+        logger.error("handle_message Erreur %s" % str(e))
 
 
 async def handle_status(handler, correlation_appareil, commande: dict):
@@ -121,15 +121,13 @@ async def handle_status(handler, correlation_appareil, commande: dict):
         return correlation
 
     except Exception as e:
-        logger.error("handle_post_poll Erreur %s" % str(e))
+        logger.error("handle_status Erreur %s" % str(e))
 
 
 async def handle_relai_status(handler, correlation_appareil, commande: dict):
     server = handler.server
     try:
-        logger.debug("handle_status Etat recu %s" % commande)
-
-        etat = server.etat_senseurspassifs
+        logger.debug("handle_relai_status uuid_appareil: %s, etat recu %s" % (correlation_appareil.uuid_appareil, commande))
 
         # Emettre l'etat de l'appareil (une lecture)
         await handler.transmettre_lecture(commande, correlation_appareil)
@@ -145,7 +143,7 @@ async def handle_relai_status(handler, correlation_appareil, commande: dict):
         return correlation_appareil
 
     except Exception as e:
-        logger.error("handle_post_poll Erreur %s" % str(e))
+        logger.error("handle_relai_status Erreur %s" % str(e))
 
 
 def calculer_transition_tz(tz):
