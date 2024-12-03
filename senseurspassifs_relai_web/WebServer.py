@@ -4,7 +4,7 @@ from aiohttp import web
 from aiohttp.web import Request
 from asyncio import Event, TaskGroup
 from typing import Optional
-from websockets import serve, WebSocketServerProtocol
+from websockets.asyncio.server import serve, ServerConnection
 
 from millegrilles_messages.bus.BusContext import ForceTerminateExecution
 from . import HttpCommands
@@ -133,6 +133,6 @@ class ServeurWebSocket:
         finally:
             self.__logger.info("Websocket stopped")
 
-    async def handle_client(self, websocket: WebSocketServerProtocol):
+    async def handle_client(self, websocket: ServerConnection):
         client_handler = WebSocketClientHandler(websocket, self.__manager)
         await client_handler.run()

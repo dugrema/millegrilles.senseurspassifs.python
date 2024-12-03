@@ -10,8 +10,10 @@ from typing import Optional, Union
 
 from astral import LocationInfo
 from astral.sun import sun
-from websockets import ConnectionClosedError, WebSocketServerProtocol
+from websockets import ConnectionClosedError
+from websockets.asyncio.server import ServerConnection
 from websockets.frames import CloseCode
+from websockets.protocol import State
 
 from millegrilles_messages.bus.BusContext import ForceTerminateExecution
 from millegrilles_messages.messages import Constantes
@@ -26,9 +28,9 @@ LOGGER = logging.getLogger(__name__)
 
 class WebSocketClientHandler:
 
-    def __init__(self, websocket: WebSocketServerProtocol, manager: SenseurspassifsRelaiWebManager):
+    def __init__(self, websocket: ServerConnection, manager: SenseurspassifsRelaiWebManager):
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
-        self.__websocket: WebSocketServerProtocol = websocket
+        self.__websocket: ServerConnection = websocket
         self.__manager: SenseurspassifsRelaiWebManager = manager
         self.__correlation: Optional[CorrelationAppareil] = None
         self.__event_correlation = asyncio.Event()
@@ -42,7 +44,7 @@ class WebSocketClientHandler:
         self.__client_stopping = asyncio.Event()
 
     @property
-    def websocket(self) -> WebSocketServerProtocol:
+    def websocket(self) -> ServerConnection:
         return self.__websocket
 
     def set_params_appareil(self, uuid_appareil: str, user_id: str):
@@ -109,7 +111,7 @@ class WebSocketClientHandler:
             except asyncio.TimeoutError:
                 pass
 
-        if self.__websocket.open:
+        if self.__websocket.state.value == State.CLOSED:
             await self.websocket.close(CloseCode.NORMAL_CLOSURE, "Closing")
 
     async def __recevoir_messages(self):
@@ -140,7 +142,7 @@ class WebSocketClientHandler:
         await self.__event_correlation.wait()
         self.__logger.debug("Debut relai_messages")
 
-        while self.__websocket.open:
+        while self.__websocket.state.value != State.CLOSED:
             try:
                 reponse = await self.__correlation.response_queue.get()
                 if self.__manager.context.stopping or self.__client_stopping.is_set():
@@ -162,7 +164,7 @@ class WebSocketClientHandler:
         await self.__event_correlation.wait()
         self.__logger.debug("Debut relai_lectures")
 
-        while self.__websocket.open:
+        while self.__websocket.state.value != State.CLOSED:
             lectures_pending = self.__correlation.take_lectures_pending()
             if lectures_pending is not None and len(lectures_pending) > 0:
                 # Retourner les lectures en attente
