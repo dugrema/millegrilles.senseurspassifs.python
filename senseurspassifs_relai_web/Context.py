@@ -26,6 +26,26 @@ class SenseurspassifsRelaiWebContext(MilleGrillesBusContext):
         self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self.__bus_connector: Optional[MilleGrillesPikaConnector] = None
         self.__fiche_publique: Optional[dict] = None
+        self.__shutting_down = asyncio.Event()
+        self.__loop = asyncio.get_event_loop()
+
+    def stop(self):
+        """
+        Override stop, allows trying to send a all devices disconnected message to server before shutting down.
+        :return:
+        """
+        self.__loop.call_soon_threadsafe(self.__shutting_down.set)
+
+    @property
+    def shutting_down(self):
+        return self.__shutting_down
+
+    def do_stop(self):
+        """
+        Continue stopping the application
+        :return:
+        """
+        super().stop()
 
     @property
     def configuration(self) -> SenseurspassifsRelaiWebConfiguration:

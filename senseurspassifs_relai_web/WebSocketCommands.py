@@ -298,8 +298,12 @@ class WebSocketClientHandler:
             pass
 
         # Note : les valeurs fournies dans la requete viennent de l'appareil (e.g. GPS, override)
-        latitude = requete.get('latitude') or geoposition.get('latitude')
-        longitude = requete.get('longitude') or geoposition.get('longitude')
+        try:
+            latitude = requete.get('latitude') or geoposition.get('latitude')
+            longitude = requete.get('longitude') or geoposition.get('longitude')
+        except AttributeError:
+            latitude = None
+            longitude = None
 
         if timezone_str is None:
             try:

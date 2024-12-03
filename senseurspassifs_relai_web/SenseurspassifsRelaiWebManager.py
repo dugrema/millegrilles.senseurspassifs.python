@@ -38,7 +38,17 @@ class SenseurspassifsRelaiWebManager:
         self.__logger.debug("SenseurspassifsRelaiWebManager thread done")
 
     async def __stop_thread(self):
-        await self.__context.wait()
+        try:
+            await self.__context.shutting_down.wait()
+            self.__logger.info("Beginning shutdown, sending disconnect relay message")
+            producer = await asyncio.wait_for(self.__context.get_producer(), 0.1)
+            await producer.command({}, 'SenseursPassifs', 'disconnectRelay', exchange=Constantes.SECURITE_PRIVE, timeout=0.5)
+        except asyncio.TimeoutError:
+            self.__logger.info("Timeout sending disconnect relay message")
+        except:
+            self.__logger.exception("Error sending all device shutdown message")
+        finally:
+            self.__context.do_stop()
 
     async def __initial_load_fiche_maintenance(self):
         """
