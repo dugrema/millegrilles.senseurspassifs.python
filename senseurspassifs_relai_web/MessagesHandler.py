@@ -41,7 +41,7 @@ class CorrelationHook:
     def is_message_pending(self):
         return not self.__reponse.empty()
 
-    async def put_message(self, message: Union[dict, MessageWrapper], nowait=True):
+    async def put_message(self, message: Optional[Union[dict, MessageWrapper]], nowait=True):
         try:
             if nowait:
                 self.__reponse.put_nowait(message)
@@ -60,6 +60,10 @@ class CorrelationHook:
             self.__reponse_consommee = True
 
         return reponse
+
+    @property
+    def response_queue(self) -> asyncio.Queue[Optional[Union[MessageWrapper, dict]]]:
+        return self.__reponse
 
 
 class CorrelationAppareil(CorrelationHook):

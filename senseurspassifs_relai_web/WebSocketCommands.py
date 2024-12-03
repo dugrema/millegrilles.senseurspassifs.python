@@ -13,6 +13,7 @@ from astral.sun import sun
 from websockets import ConnectionClosedError, WebSocketServerProtocol
 from websockets.frames import CloseCode
 
+from millegrilles_messages.bus.BusContext import ForceTerminateExecution
 from millegrilles_messages.messages import Constantes
 from millegrilles_messages.messages.EnveloppeCertificat import EnveloppeCertificat
 from millegrilles_messages.messages.MessagesModule import MessageWrapper
@@ -37,6 +38,8 @@ class WebSocketClientHandler:
         self.__uuid_appareil: Optional[str] = None
         self.__user_id: Optional[str] = None
         self.__version: Optional[str] = None
+
+        self.__client_stopping = asyncio.Event()
 
     @property
     def websocket(self) -> WebSocketServerProtocol:
@@ -74,18 +77,43 @@ class WebSocketClientHandler:
                 group.create_task(self.__recevoir_messages())
                 group.create_task(self.__relai_messages())
                 group.create_task(self.__relai_lectures())
+                group.create_task(self.__connection_closed_waiter())
+                group.create_task(self.__watchdog())
         except* asyncio.CancelledError as e:
             raise e
+        except* ForceTerminateExecution:
+            self.__logger.info("Closing thread")
         except* Exception:
             if self.__manager.context.stopping is False:
                 self.__logger.exception("Unhandled error, thread closed - diconnecting device %s/%s", self.__user_id, self.__uuid_appareil)
                 await self.websocket.close(CloseCode.ABNORMAL_CLOSURE, 'Thread closed')
 
-        self.__logger.debug("End connexion userid: %s, uuid_appareil: %s, %s/%s",
-                            self.__user_id, self.__uuid_appareil, self.__correlation, self.__date_connexion)
+        self.__logger.debug("End connexion userid: %s, uuid_appareil: %s, fingerprint: %s, connection date: %s",
+                            self.__user_id, self.__uuid_appareil, self.__correlation.fingerprint, self.__date_connexion)
+
+    async def __connection_closed_waiter(self):
+        await self.__websocket.wait_closed()
+        # Release all threads
+        self.__client_stopping.set()
+        await self.__correlation.put_message(None)
+
+    async def __watchdog(self):
+        while self.__manager.context.stopping is False and self.__client_stopping.is_set() is False:
+            if self.__correlation and self.__correlation.expire:
+                self.__logger.info("Client connection expired, disconnecting")
+                await self.websocket.close(CloseCode.TRY_AGAIN_LATER, "Timeout")
+                return
+            try:
+                await asyncio.wait_for(self.__client_stopping.wait(), 60)
+                return  # Stopping
+            except asyncio.TimeoutError:
+                pass
+
+        if self.__websocket.open:
+            await self.websocket.close(CloseCode.NORMAL_CLOSURE, "Closing")
 
     async def __recevoir_messages(self):
-        self.__logger.debug("Connexion '%s'" % self.__date_connexion)
+        self.__logger.debug("__recevoir_messages Connexion '%s'", self.__date_connexion)
 
         try:
             async for message in self.__websocket:
@@ -93,7 +121,7 @@ class WebSocketClientHandler:
                 try:
                     await self.presence_appareil()
                 except Exception:
-                    self.__logger.exception("recevoir_messages Erreur emettre presence appareil")
+                    self.__logger.exception("__recevoir_messages Erreur emettre presence appareil")
                 self.__correlation.touch()
 
         except ConnectionClosedError:
@@ -104,9 +132,9 @@ class WebSocketClientHandler:
         try:
             await self.presence_appareil(deconnecte=True)
         except Exception:
-            self.__logger.exception("recevoir_messages Erreur emettre presence appareil")
+            self.__logger.exception("__recevoir_messages Erreur emettre presence appareil")
 
-        self.__logger.debug("Fin connexion '%s'" % self.__date_connexion)
+        self.__logger.debug("__recevoir_messages Fin connexion '%s'" % self.__date_connexion)
 
     async def __relai_messages(self):
         await self.__event_correlation.wait()
@@ -114,7 +142,9 @@ class WebSocketClientHandler:
 
         while self.__websocket.open:
             try:
-                reponse = await self.__correlation.get_reponse(5)
+                reponse = await self.__correlation.response_queue.get()
+                if self.__manager.context.stopping or self.__client_stopping.is_set():
+                    return  # Stopping
 
                 if isinstance(reponse, MessageWrapper):
                     reponse = reponse.parsed['__original']
@@ -151,10 +181,10 @@ class WebSocketClientHandler:
 
             # Faire une aggregation de 20 secondes de lectures
             try:
-                await self.__manager.context.wait(20)
+                await asyncio.wait_for(self.__client_stopping.wait(), 20)
                 return  # Stopping
             except asyncio.TimeoutError:
-                pass  # OK
+                pass  # Loop
 
     async def __transmettre_lecture(self, lecture: dict, correlation_appareil: Optional[CorrelationAppareil] = None):
         await self.__manager.send_readings_correlation(lecture, correlation_appareil)
