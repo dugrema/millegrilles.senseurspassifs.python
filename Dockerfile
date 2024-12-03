@@ -21,4 +21,4 @@ USER 984:980
 
 WORKDIR /opt/millegrilles/dist
 
-CMD ["-m", "senseurspassifs_relai_web", "--verbose"]
+CMD ["-m", "senseurspassifs_relai_web"]
