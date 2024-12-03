@@ -1,4 +1,3 @@
-import asyncio
 import logging
 
 from aiohttp import web
@@ -15,7 +14,6 @@ from .WebSocketCommands import WebSocketClientHandler
 from millegrilles_messages.messages import Constantes
 
 from millegrilles_senseurspassifs import Constantes as SenseurspassifsWebRelayConstants
-from senseurspassifs_relai_web.MessagesHandler import CorrelationAppareil
 
 
 class WebServer:
@@ -110,25 +108,6 @@ class ServeurWebSocket:
         self.__websocket = None
         self.__task_group: Optional[TaskGroup] = None
 
-    async def entretien(self):
-        self.__logger.debug('Entretien')
-        if self.__manager.context.fiche_publique is None:
-            self.__logger.info("Pre-charger fiche publique")
-            producer = await self.__manager.context.get_producer()
-            try:
-                signing_key = self.__manager.context.signing_key
-                idmg = signing_key.enveloppe.idmg
-                requete = {'idmg': idmg}
-                reponse = await producer.request(
-                    requete, 'CoreTopologie', exchange=Constantes.SECURITE_PRIVE, action='ficheMillegrille')
-
-                if reponse.parsed.get('idmg') == idmg:
-                    fiche = reponse.parsed
-                    fiche['certificat'] = reponse.certificat.chaine_pem()
-                    self.__manager.context.fiche_publique = fiche
-            except asyncio.TimeoutError:
-                self.__logger.info("MQ non pret pour charger fiche")
-
     async def __stop_thread(self):
         await self.__manager.context.wait()
 
@@ -140,7 +119,6 @@ class ServeurWebSocket:
             await self.__manager.context.wait()  # wait until stopping
 
     async def run(self):
-
         try:
             try:
                 async with TaskGroup() as group:
@@ -158,27 +136,3 @@ class ServeurWebSocket:
     async def handle_client(self, websocket: WebSocketServerProtocol):
         client_handler = WebSocketClientHandler(websocket, self.__manager)
         await client_handler.run()
-
-    # async def transmettre_lecture(self, lecture: dict, correlation_appareil: CorrelationAppareil = None):
-    #     producer = await self.__manager.context.get_producer()
-    #
-    #     if correlation_appareil is not None:
-    #         lecture_relayee = lecture.copy()
-    #         lecture_relayee['user_id'] = correlation_appareil.user_id
-    #         lecture_relayee['uuid_appareil'] = correlation_appareil.uuid_appareil
-    #         message_enveloppe = {
-    #             'instance_id': self.__manager.context.instance_id,
-    #             'lecture_relayee': lecture_relayee,
-    #         }
-    #     else:
-    #         message_enveloppe = {
-    #             'instance_id': self.__manager.context.instance_id,
-    #             'lecture': lecture,
-    #         }
-    #
-    #     await producer.event(
-    #         message_enveloppe,
-    #         SenseurspassifsWebRelayConstants.ROLE_SENSEURSPASSIFS_RELAI,
-    #         SenseurspassifsWebRelayConstants.EVENEMENT_DOMAINE_LECTURE,
-    #         exchange=Constantes.SECURITE_PRIVE
-    #     )

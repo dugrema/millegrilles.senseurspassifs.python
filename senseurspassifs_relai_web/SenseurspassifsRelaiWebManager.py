@@ -1,8 +1,10 @@
+import asyncio
 import logging
 
 from asyncio import TaskGroup
 from typing import Optional
 
+from millegrilles_messages.messages import Constantes
 from millegrilles_messages.bus.BusContext import ForceTerminateExecution
 from millegrilles_messages.messages.EnveloppeCertificat import EnveloppeCertificat
 from millegrilles_messages.messages.MessagesModule import MessageWrapper
@@ -24,6 +26,7 @@ class SenseurspassifsRelaiWebManager:
         try:
             async with TaskGroup() as group:
                 group.create_task(self.__stop_thread())
+                group.create_task(self.__initial_load_fiche_maintenance())
         except *Exception:  # Stop on any thread exception
             self.__logger.exception("SenseurspassifsRelaiWebManager Unhandled error, closing")
 
@@ -36,6 +39,31 @@ class SenseurspassifsRelaiWebManager:
 
     async def __stop_thread(self):
         await self.__context.wait()
+
+    async def __initial_load_fiche_maintenance(self):
+        """
+        This thread attemps to load the fiche until one is received.
+        :return:
+        """
+
+        while self.__context.fiche_publique is None:
+            self.__logger.info("Pre-charger fiche publique")
+            producer = await self.__context.get_producer()
+            try:
+                signing_key = self.__context.signing_key
+                idmg = signing_key.enveloppe.idmg
+                requete = {'idmg': idmg}
+                reponse = await producer.request(
+                    requete, 'CoreTopologie', exchange=Constantes.SECURITE_PRIVE, action='ficheMillegrille')
+
+                if reponse.parsed.get('idmg') == idmg:
+                    fiche = reponse.parsed
+                    fiche['certificat'] = reponse.certificat.chaine_pem()
+                    self.__context.fiche_publique = fiche
+                    return  # Done
+            except asyncio.TimeoutError:
+                self.__logger.info("MQ non pret pour charger fiche")
+            await self.__context.wait(20)
 
     @property
     def context(self) -> SenseurspassifsRelaiWebContext:
