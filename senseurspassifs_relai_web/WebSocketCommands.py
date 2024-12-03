@@ -1,149 +1,511 @@
 import asyncio
 import datetime
-import json
 import logging
+import json
+from asyncio import TaskGroup
+
 import pytz
+
+from typing import Optional, Union
 
 from astral import LocationInfo
 from astral.sun import sun
-
-from cryptography.exceptions import InvalidSignature
+from websockets import ConnectionClosedError, WebSocketServerProtocol
+from websockets.frames import CloseCode
 
 from millegrilles_messages.messages import Constantes
+from millegrilles_messages.messages.EnveloppeCertificat import EnveloppeCertificat
 from millegrilles_messages.messages.MessagesModule import MessageWrapper
 from senseurspassifs_relai_web.Chiffrage import dechiffrer_message_chacha20poly1305, attacher_reponse_chiffree
+from senseurspassifs_relai_web.MessagesHandler import CorrelationAppareil
+from senseurspassifs_relai_web.SenseurspassifsRelaiWebManager import SenseurspassifsRelaiWebManager
 
-logger = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 
 
-async def handle_message(handler, message: bytes):
+class WebSocketClientHandler:
 
-    server = handler.server
-    websocket = handler.websocket
+    def __init__(self, websocket: WebSocketServerProtocol, manager: SenseurspassifsRelaiWebManager):
+        self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
+        self.__websocket: WebSocketServerProtocol = websocket
+        self.__manager: SenseurspassifsRelaiWebManager = manager
+        self.__correlation: Optional[CorrelationAppareil] = None
+        self.__event_correlation = asyncio.Event()
+        self.__date_connexion = datetime.datetime.now(tz=pytz.UTC)
 
-    # Extraire information de l'enveloppe du message
-    try:
-        commande = json.loads(message)
-        etat = server.etat_senseurspassifs
-        action = commande['routage']['action']
+        self.__presence_emise: Optional[datetime.datetime] = None
+        self.__uuid_appareil: Optional[str] = None
+        self.__user_id: Optional[str] = None
+        self.__version: Optional[str] = None
 
-        fingerprint = commande.get('fingerprint')
+    @property
+    def websocket(self) -> WebSocketServerProtocol:
+        return self.__websocket
+
+    def set_params_appareil(self, uuid_appareil: str, user_id: str):
+        self.__uuid_appareil = uuid_appareil
+        self.__user_id = user_id
+
+    def set_version(self, version: str):
+        self.__version = version
+
+    async def presence_appareil(self, deconnecte=False):
+        evenement = None
+        if self.__uuid_appareil and self.__user_id:
+            if deconnecte is True:
+                evenement = {'uuid_appareil': self.__uuid_appareil, 'user_id': self.__user_id, 'deconnecte': True}
+            elif self.__presence_emise is None:
+                evenement = {'uuid_appareil': self.__uuid_appareil, 'user_id': self.__user_id, 'version': self.__version}
+
+        if evenement:
+            producer = await self.__manager.context.get_producer()
+
+            await producer.event(evenement,
+                                 domain='senseurspassifs_relai',
+                                 action='presenceAppareil',
+                                 exchange=Constantes.SECURITE_PRIVE)
+
+            self.__presence_emise = datetime.datetime.now()
+
+    async def run(self):
+        self.__logger.debug("run Connexion client %s" % self.__correlation)
         try:
-            correlation_appareil = server.message_handler.get_correlation_appareil(fingerprint)
-        except ValueError:
-            # Appareil inconnu - OK
-            correlation_appareil = None
+            async with TaskGroup() as group:
+                group.create_task(self.__recevoir_messages())
+                group.create_task(self.__relai_messages())
+                group.create_task(self.__relai_lectures())
+        except* asyncio.CancelledError as e:
+            raise e
+        except* Exception:
+            if self.__manager.context.stopping is False:
+                self.__logger.exception("Unhandled error, thread closed - diconnecting device %s/%s", self.__user_id, self.__uuid_appareil)
+                await self.websocket.close(CloseCode.ABNORMAL_CLOSURE, 'Thread closed')
+
+        self.__logger.debug("End connexion userid: %s, uuid_appareil: %s, %s/%s",
+                            self.__user_id, self.__uuid_appareil, self.__correlation, self.__date_connexion)
+
+    async def __recevoir_messages(self):
+        self.__logger.debug("Connexion '%s'" % self.__date_connexion)
 
         try:
-            commande['sig']  # Verifier que l'element sig est present (message non chiffre)
-            enveloppe = await etat.validateur_message.verifier(commande)
+            async for message in self.__websocket:
+                await self.__handle_message(message)
+                try:
+                    await self.presence_appareil()
+                except Exception:
+                    self.__logger.exception("recevoir_messages Erreur emettre presence appareil")
+                self.__correlation.touch()
 
+        except ConnectionClosedError:
+            self.__logger.debug("Connexion %s fermee incorrectement" % self.__date_connexion)
+        finally:
+            self.__event_correlation.set()  # Cleanup
+
+        try:
+            await self.presence_appareil(deconnecte=True)
+        except Exception:
+            self.__logger.exception("recevoir_messages Erreur emettre presence appareil")
+
+        self.__logger.debug("Fin connexion '%s'" % self.__date_connexion)
+
+    async def __relai_messages(self):
+        await self.__event_correlation.wait()
+        self.__logger.debug("Debut relai_messages")
+
+        while self.__websocket.open:
             try:
-                uuid_appareil = enveloppe.subject_common_name
-                user_id = enveloppe.get_user_id
-                handler.set_params_appareil(uuid_appareil, user_id)
-            except AttributeError:
-                logger.exception("Erreur set_params_appareils")
+                reponse = await self.__correlation.get_reponse(5)
 
-            if action == 'etatAppareil':
-                return await handle_status(handler, correlation_appareil, commande)
-            elif action == 'getTimezoneInfo':
-                return await handle_get_timezone_info(server, websocket, correlation_appareil, commande)
-            elif action in ['getAppareilDisplayConfiguration', 'getAppareilProgrammesConfiguration']:
-                return await handle_requete(server, websocket, correlation_appareil, commande, enveloppe)
-            elif action == 'signerAppareil':
-                return await handle_renouvellement(handler, correlation_appareil, commande, enveloppe)
-            elif action == 'getFichePublique':
-                return await handle_get_fiche(handler, correlation_appareil, commande, enveloppe)
-            elif action == 'getRelaisWeb':
-                return await handle_get_relais_web(handler, correlation_appareil)
-            elif action == 'echangerClesChiffrage':
-                return await handle_echanger_cles_chiffrage(handler, correlation_appareil, commande, enveloppe)
-            elif action == 'confirmerRelai':
-                return await handle_confirmer_relai(handler, correlation_appareil, commande, enveloppe)
+                if isinstance(reponse, MessageWrapper):
+                    reponse = reponse.parsed['__original']
+                elif isinstance(reponse, dict):
+                    continue
 
-        except KeyError:
-            ciphertext = commande['ciphertext']
-            tag = commande['tag']
-            nonce = commande['nonce']
+                if reponse is not None:
+                    attacher_reponse_chiffree(self.__correlation, reponse, enveloppe=None)
+                    await self.__websocket.send(json.dumps(reponse).encode('utf-8'))
 
+            except asyncio.TimeoutError:
+                pass
+
+    async def __relai_lectures(self):
+        await self.__event_correlation.wait()
+        self.__logger.debug("Debut relai_lectures")
+
+        while self.__websocket.open:
+            lectures_pending = self.__correlation.take_lectures_pending()
+            if lectures_pending is not None and len(lectures_pending) > 0:
+                # Retourner les lectures en attente
+
+                reponse, _ = self.__manager.context.formatteur.signer_message(
+                    Constantes.KIND_COMMANDE,
+                    {'ok': True, 'lectures_senseurs': lectures_pending},
+                    action='lectures_senseurs'
+                )
+
+                # Ajouter element relai_chiffre si possible
+                attacher_reponse_chiffree(self.__correlation, reponse, enveloppe=None)
+
+                reponse_bytes = json.dumps(reponse).encode('utf-8')
+                await self.__websocket.send(reponse_bytes)
+
+            # Faire une aggregation de 20 secondes de lectures
             try:
-                cle_dechiffrage = correlation_appareil.cle_dechiffrage
-                commande = dechiffrer_message_chacha20poly1305(cle_dechiffrage, nonce, tag, ciphertext)
-                commande = json.loads(commande)
+                await self.__manager.context.wait(20)
+                return  # Stopping
+            except asyncio.TimeoutError:
+                pass  # OK
 
-                if action == 'etatAppareilRelai':
-                    return await handle_relai_status(handler, correlation_appareil, commande)
-                elif action == 'getRelaisWeb':
-                    return await handle_get_relais_web(handler, correlation_appareil)
+    async def __transmettre_lecture(self, lecture: dict, correlation_appareil: Optional[CorrelationAppareil] = None):
+        await self.__manager.send_readings_correlation(lecture, correlation_appareil)
+
+    async def __handle_message(self, message: bytes):
+        # Extraire information de l'enveloppe du message
+        try:
+            commande = json.loads(message)
+            context = self.__manager.context
+            action = commande['routage']['action']
+
+            # Check if the sig element is present (means the message is not encrypted)
+            if 'sig' in commande:
+                # Message is not encrypted
+                enveloppe = await context.validateur_message.verifier(commande)
+
+                try:
+                    uuid_appareil = enveloppe.subject_common_name
+                    user_id = enveloppe.get_user_id
+                    self.set_params_appareil(uuid_appareil, user_id)
+                except AttributeError:
+                    LOGGER.exception("Erreur set_params_appareils")
+
+                if action == 'etatAppareil':
+                    return await self.__handle_status(commande)
                 elif action == 'getTimezoneInfo':
-                    return await handle_get_timezone_info(server, websocket, correlation_appareil, commande)
+                    return await self.__handle_get_timezone_info(commande)
+                elif action in ['getAppareilDisplayConfiguration', 'getAppareilProgrammesConfiguration']:
+                    return await self.__handle_requete(commande, enveloppe)
+                elif action == 'signerAppareil':
+                    return await self.__handle_renouvellement(commande, enveloppe)
+                elif action == 'getFichePublique':
+                    return await self.__handle_get_fiche(commande, enveloppe)
+                elif action == 'getRelaisWeb':
+                    return await self.__handle_get_relais_web()
+                elif action == 'echangerClesChiffrage':
+                    return await self.__handle_echanger_cles_chiffrage(commande, enveloppe)
+                elif action == 'confirmerRelai':
+                    return await self.__handle_confirmer_relai(commande, enveloppe)
+            else:
+                # Encrypted message
+                ciphertext = commande['ciphertext']
+                tag = commande['tag']
+                nonce = commande['nonce']
 
-            except Exception:
-                logger.exception('Erreur dechiffrage, on desactive le chiffrage')
-                correlation_appareil.clear_chiffrage()
-                reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(
-                    Constantes.KIND_COMMANDE, dict(), action='resetSecret')
-                await websocket.send(json.dumps(reponse).encode('utf-8'))
+                try:
+                    cle_dechiffrage = self.__correlation.cle_dechiffrage
+                    commande = dechiffrer_message_chacha20poly1305(cle_dechiffrage, nonce, tag, ciphertext)
+                    commande = json.loads(commande)
 
-        logger.error("handle_message Action inconnue %s" % action)
+                    if action == 'etatAppareilRelai':
+                        return await self.__handle_relai_status(commande)
+                    elif action == 'getRelaisWeb':
+                        return await self.__handle_get_relais_web()
+                    elif action == 'getTimezoneInfo':
+                        return await self.__handle_get_timezone_info(commande)
+                except asyncio.CancelledError as e:
+                    raise e
+                except Exception:
+                    LOGGER.exception('Erreur dechiffrage, on desactive le chiffrage')
+                    self.__correlation.clear_chiffrage()
+                    reponse, _ = self.__manager.context.formatteur.signer_message(
+                        Constantes.KIND_COMMANDE, dict(), action='resetSecret')
+                    await self.__websocket.send(json.dumps(reponse).encode('utf-8'))
 
-    except Exception as e:
-        logger.error("handle_message Erreur %s" % str(e))
+            LOGGER.error("handle_message Action inconnue %s" % action)
+
+        except asyncio.CancelledError as e:
+            raise e
+        except Exception as e:
+            LOGGER.error("handle_message Unhandled error %s" % str(e))
 
 
-async def handle_status(handler, correlation_appareil, commande: dict):
-    server = handler.server
-    try:
-        logger.debug("handle_status Etat recu %s" % commande)
+    async def __handle_status(self, commande: dict):
+        try:
+            LOGGER.debug("handle_status Etat recu %s" % commande)
 
-        etat = server.etat_senseurspassifs
-        enveloppe = await etat.validateur_message.verifier(commande)
+            enveloppe = await self.__manager.context.validateur_message.verifier(commande)
+            user_id = enveloppe.get_user_id
+
+            # S'assurer d'avoir un appareil de role senseurspassifs
+            if user_id is None or 'senseurspassifs' not in enveloppe.get_roles:
+                LOGGER.info("Mauvais role certificat (%s) pour etat appareil" % enveloppe.get_roles)
+                return
+
+            contenu = json.loads(commande['contenu'])
+            try:
+                senseurs = contenu['senseurs']
+            except KeyError:
+                senseurs = None
+
+            await self.__create_device_correlation(enveloppe, senseurs, emettre_lectures=False)
+
+            # Emettre l'etat de l'appareil (une lecture)
+            await self.__transmettre_lecture(commande)
+
+        except Exception as e:
+            LOGGER.error("handle_status Erreur %s" % str(e))
+
+    async def __create_device_correlation(self, certificat: EnveloppeCertificat, senseurs: Optional[list] = None,
+                                          emettre_lectures=True):
+        self.__correlation = await self.__manager.create_device_correlation(certificat, senseurs, emettre_lectures)
+        self.__event_correlation.set()
+
+    async def __handle_relai_status(self, commande: dict):
+        try:
+            LOGGER.debug("handle_relai_status uuid_appareil: %s, etat recu %s" % (self.__correlation.uuid_appareil, commande))
+
+            # Emettre l'etat de l'appareil (une lecture)
+            await self.__transmettre_lecture(commande, self.__correlation)
+
+            try:
+                senseurs = commande['senseurs']
+                if senseurs is not None:
+                    self.__correlation.set_senseurs_externes(senseurs)
+            except KeyError:
+                pass
+
+            return self.__correlation
+
+        except Exception as e:
+            LOGGER.error("handle_relai_status Erreur %s" % str(e))
+
+    async def __handle_get_timezone_info(self, requete: dict):
+        producer = await self.__manager.context.get_producer()
+
+        reponse = {'ok': True}
+
+        uuid_appareil = self.__correlation.uuid_appareil
+        user_id = self.__correlation.user_id
+        timezone_str = None
+        geoposition = None
+
+        try:
+            requete_appareil = {'user_id': user_id, 'uuid_appareil': uuid_appareil}
+            reponse_appareil = await producer.request(
+                requete_appareil, 'SenseursPassifs', 'getTimezoneAppareil', exchange=Constantes.SECURITE_PRIVE, timeout=3)
+            timezone_str = reponse_appareil.parsed.get('timezone')
+            geoposition = reponse_appareil.parsed.get('geoposition') or dict()
+        except asyncio.TimeoutError:
+            pass
+
+        # Note : les valeurs fournies dans la requete viennent de l'appareil (e.g. GPS, override)
+        latitude = requete.get('latitude') or geoposition.get('latitude')
+        longitude = requete.get('longitude') or geoposition.get('longitude')
+
+        if timezone_str is None:
+            try:
+                timezone_str = requete['timezone']
+                reponse['timezone'] = timezone_str
+            except KeyError:
+                timezone_str = None
+
+        if timezone_str:
+            reponse['timezone'] = timezone_str
+            try:
+                timezone_pytz = pytz.timezone(timezone_str)
+                info_tz = calculer_transition_tz(timezone_pytz)
+                reponse.update(info_tz)
+            except pytz.exceptions.UnknownTimeZoneError:
+                LOGGER.error("Timezone %s inconnue" % timezone_str)
+            except KeyError:
+                # pas de timezone
+                reponse['ok'] = False
+        else:
+            reponse['ok'] = False
+
+        # Verifier si on retourne l'information de l'horaire solaire de la journee
+        if isinstance(latitude, (float, int)) and isinstance(longitude, (float, int)):
+            reponse['latitude'] = latitude
+            reponse['longitude'] = longitude
+            reponse['solaire_utc'] = calculer_horaire_solaire(latitude, longitude)
+            reponse['ok'] = True
+
+        reponse, _ = self.__manager.context.formatteur.signer_message(Constantes.KIND_COMMANDE, reponse, action='timezoneInfo')
+
+        attacher_reponse_chiffree(self.__correlation, reponse, enveloppe=None)
+
+        await self.__websocket.send(json.dumps(reponse).encode('utf-8'))
+
+    async def __handle_get_relais_web(self):
+        fiche = self.__manager.context.fiche_publique
+        if fiche is not None:
+            try:
+                url_relais = parse_fiche_relais(fiche)
+                reponse = {'relais': url_relais}
+                reponse, _ = self.__manager.context.formatteur.signer_message(Constantes.KIND_COMMANDE, reponse, action='relaisWeb')
+                attacher_reponse_chiffree(self.__correlation, reponse, enveloppe=None)
+                await self.__websocket.send(json.dumps(reponse).encode('utf-8'))
+            except KeyError:
+                pass  # OK, pas de timezone
+
+    async def __handle_requete(self, requete: dict, enveloppe):
+        try:
+            LOGGER.debug("handle_post_request Etat recu %s" % requete)
+
+            user_id = enveloppe.get_user_id
+            routage_requete = requete['routage']
+            action_requete = routage_requete['action']
+
+            # S'assurer d'avoir un appareil de role senseurspassifs
+            if user_id is None or 'senseurspassifs' not in enveloppe.get_roles:
+                LOGGER.error("Requete refusee pour roles %s" % enveloppe.get_roles)
+                return
+
+            # # Touch (conserver presence appareil)
+            # await server.message_handler.create_device_correlation(enveloppe, emettre_lectures=False)
+
+            # Emettre la requete
+            domaine_requete = routage_requete['domaine']
+            partition_requete = routage_requete.get('partition')
+            exchange = Constantes.SECURITE_PRIVE
+
+            try:
+                producer = await self.__manager.context.get_producer()
+                reponse = await producer.request(
+                    requete, domaine_requete, action_requete, exchange, partition_requete, noformat=True)
+                reponse = reponse.parsed['__original']
+
+                # Injecter _action (en-tete de reponse ne contient pas d'action)
+                reponse['attachements'] = {'action': action_requete}
+
+                attacher_reponse_chiffree(self.__correlation, reponse, enveloppe=None)
+
+                await self.__websocket.send(json.dumps(reponse).encode('utf-8'))
+            except asyncio.TimeoutError:
+                pass
+
+        except Exception:
+            LOGGER.exception("Erreur traitement requete")
+
+    async def __handle_renouvellement(self, commande: dict, enveloppe):
+        try:
+            LOGGER.debug("handle_renouvellement Demande recue %s" % commande)
+
+            # Verifier - s'assure que la signature est valide et certificat est encore actif
+            user_id = enveloppe.get_user_id
+
+            # S'assurer d'avoir un appareil de role senseurspassifs
+            if user_id is None or 'senseurspassifs' not in enveloppe.get_roles:
+                LOGGER.info("handle_renouvellement Role certificat renouvellement invalide : %s" % enveloppe.get_roles)
+                return  # Skip
+
+            routage = commande['routage']
+            try:
+                if routage['action'] != 'signerAppareil' or routage['domaine'] != 'SenseursPassifs':
+                    LOGGER.info("handle_renouvellement Action/domaine certificat renouvellement invalide")
+                    return  # Skip
+            except KeyError:
+                LOGGER.info("handle_renouvellement Action/domaine certificat renouvellement invalide")
+                return  # Skip
+
+            # Faire le relai de la commande - CorePki/certissuer s'occupent des renouvellements de certs actifs
+            try:
+                producer = await self.__manager.context.get_producer()
+                reponse = await producer.command(
+                    commande, 'SenseursPassifs', 'signerAppareil', Constantes.SECURITE_PRIVE, noformat=True)
+                reponse = reponse.parsed['__original']
+
+                # Injecter _action (en-tete de reponse ne contient pas d'action)
+                reponse['attachements'] = {'action': 'signerAppareil'}
+
+                attacher_reponse_chiffree(self.__correlation, reponse, enveloppe=None)
+
+                reponse_bytes = json.dumps(reponse).encode('utf-8')
+
+                await self.__websocket.send(reponse_bytes)
+            except asyncio.TimeoutError:
+                LOGGER.info("handle_renouvellement Erreur commande signerAppareil (timeout)")
+
+        except Exception as e:
+            LOGGER.error("handle_renouvellement Erreur %s" % str(e))
+
+    async def __handle_get_fiche(self, commande: dict, enveloppe):
+        fiche = self.__manager.context.fiche_publique
+        if fiche is not None:
+            reponse_bytes = json.dumps(fiche).encode('utf-8')
+            await self.__websocket.send(reponse_bytes)
+
+    async def __handle_echanger_cles_chiffrage(self, commande: dict, enveloppe: EnveloppeCertificat):
         user_id = enveloppe.get_user_id
 
         # S'assurer d'avoir un appareil de role senseurspassifs
         if user_id is None or 'senseurspassifs' not in enveloppe.get_roles:
-            logger.info("Mauvais role certificat (%s) pour etat appareil" % enveloppe.get_roles)
+            LOGGER.info("Mauvais role certificat (%s) pour etat appareil" % enveloppe.get_roles)
             return
 
-        # Emettre l'etat de l'appareil (une lecture)
-        await handler.transmettre_lecture(commande)
+        # correlation = await self.__manager.enregistrer_appareil(enveloppe, emettre_lectures=False)
+        # await self.__set_correlation(correlation)
+        if self.__correlation is None:
+            await self.__create_device_correlation(enveloppe, emettre_lectures=False)
 
         contenu = json.loads(commande['contenu'])
+
         try:
-            senseurs = contenu['senseurs']
-        except KeyError:
-            senseurs = None
+            version = contenu['version']
+            self.set_version(version)
+        except (AttributeError, KeyError):
+            LOGGER.debug("Version non disponible")
 
-        correlation = await server.message_handler.enregistrer_appareil(enveloppe, senseurs, emettre_lectures=False)
-        await handler.set_correlation(correlation)
+        # Valider enveloppe, doit correspondre a l'appareil authentifie
+        LOGGER.debug("handle_echanger_cles_chiffrage commande : %s" % commande)
+        cle_peer = contenu['peer']
+        cle_publique_locale = await self.echanger_cle_chiffrage(cle_peer)
 
-        return correlation
+        reponse = {'peer': cle_publique_locale}
+        reponse, _ = self.__manager.context.formatteur.signer_message(
+            Constantes.KIND_COMMANDE, reponse, action='echangerSecret')
 
-    except Exception as e:
-        logger.error("handle_status Erreur %s" % str(e))
+        reponse_bytes = json.dumps(reponse).encode('utf-8')
+        await self.__websocket.send(reponse_bytes)
 
 
-async def handle_relai_status(handler, correlation_appareil, commande: dict):
-    server = handler.server
-    try:
-        logger.debug("handle_relai_status uuid_appareil: %s, etat recu %s" % (correlation_appareil.uuid_appareil, commande))
+    async def __handle_confirmer_relai(self, commande: dict, enveloppe: EnveloppeCertificat):
+        # Verifier que la commande est bien pour le certificat local
 
-        # Emettre l'etat de l'appareil (une lecture)
-        await handler.transmettre_lecture(commande, correlation_appareil)
-
-        correlation_appareil.touch()
         try:
-            senseurs = commande['senseurs']
-            if senseurs is not None:
-                correlation_appareil.set_senseurs_externes(senseurs)
-        except KeyError:
-            pass
+            fingerprint = enveloppe.fingerprint
+            if fingerprint != self.__correlation.fingerprint:
+                raise Exception('handle_confirmer_relai: Wrong fingerprint response - deactivating encryption')
 
-        return correlation_appareil
+            # Transmettre la commande de confirmation vers le domaine SenseursPassifs
+            # Va permettre de faire le relai de l'etat du senseur via signature locale
+            if commande['routage']['action'] != 'confirmerRelai' or commande['routage']['domaine'] != 'SenseursPassifs':
+                raise Exception('handle_confirmer_relai: mauvais domaine/action pour commande confirmation : %s' % commande['routage'])
 
-    except Exception as e:
-        logger.error("handle_relai_status Erreur %s" % str(e))
+            producer = await self.__manager.context.get_producer()
+            result = await producer.command(commande, 'SenseursPassifs', 'confirmerRelai', Constantes.SECURITE_PRIVE,
+                                            noformat=True, timeout=5)
+            if result.parsed.get('ok') is True:
+                # Tout est pret, le relai peut maintenant signer le contenu du client
+                self.activer_relai_messages()
+            else:
+                self.__logger.error("Error activating encrypted message relay: %s", result)
+
+        except asyncio.CancelledError as e:
+            raise e
+        except Exception:
+            LOGGER.exception("Erreur confirmation relai avec domaine, desactiver chiffrage avec microcontrolleur")
+            self.__correlation.clear_chiffrage()
+            # Desactiver le chiffrage avec le client
+            reponse, _ = self.__manager.context.formatteur.signer_message(
+                Constantes.KIND_COMMANDE, dict(), action='resetSecret')
+            reponse_bytes = json.dumps(reponse).encode('utf-8')
+            await self.__websocket.send(reponse_bytes)
+
+    async def echanger_cle_chiffrage(self, cle_peer: str):
+        return self.__correlation.preparer_cle_chiffrage(cle_peer)
+
+    def activer_relai_messages(self):
+        self.__correlation.activer_relai_messages()
 
 
 def calculer_transition_tz(tz):
@@ -171,80 +533,7 @@ def calculer_transition_tz(tz):
     return reponse
 
 
-async def handle_get_timezone_info(server, websocket, correlation_appareil, requete: dict):
-    etat = server.etat_senseurspassifs
-    producer = etat.producer
-
-    reponse = {'ok': True}
-
-    # timezone_str = None
-    uuid_appareil = correlation_appareil.uuid_appareil
-    user_id = correlation_appareil.user_id
-    timezone_str = None
-    geoposition = None
-
-    # try:
-    #     requete_usager = {'user_id': user_id}
-    #     reponse_usager = await producer.executer_requete(
-    #         requete_usager, 'SenseursPassifs', 'getConfigurationUsager', exchange=Constantes.SECURITE_PRIVE, timeout=3)
-    #     timezone_str = reponse_usager.parsed['timezone']
-    # except (KeyError, asyncio.TimeoutError):
-    #     pass
-
-    try:
-        requete_appareil = {'user_id': user_id, 'uuid_appareil': uuid_appareil}
-        reponse_appareil = await producer.executer_requete(
-            requete_appareil, 'SenseursPassifs', 'getTimezoneAppareil', exchange=Constantes.SECURITE_PRIVE, timeout=3)
-        timezone_str = reponse_appareil.parsed.get('timezone')
-        geoposition = reponse_appareil.parsed.get('geoposition') or dict()
-    except asyncio.TimeoutError:
-        pass
-
-    # Note : les valeurs fournies dans la requete viennent de l'appareil (e.g. GPS, override)
-    latitude = requete.get('latitude') or geoposition.get('latitude')
-    longitude = requete.get('longitude') or geoposition.get('longitude')
-
-    if timezone_str is None:
-        try:
-            timezone_str = requete['timezone']
-            reponse['timezone'] = timezone_str
-        except KeyError:
-            timezone_str = None
-
-    if timezone_str:
-        reponse['timezone'] = timezone_str
-        try:
-            # now = datetime.datetime.utcnow()
-            # timezone_str = requete['timezone']
-            timezone_pytz = pytz.timezone(timezone_str)
-            # offset = timezone_pytz.utcoffset(now)
-            # offset_seconds = int(offset.total_seconds())
-            # reponse['timezone_offset'] = offset_seconds
-            info_tz = calculer_transition_tz(timezone_pytz)
-            reponse.update(info_tz)
-        except pytz.exceptions.UnknownTimeZoneError:
-            logger.error("Timezone %s inconnue" % timezone_str)
-        except KeyError:
-            # pas de timezone
-            reponse['ok'] = False
-    else:
-        reponse['ok'] = False
-
-    # Verifier si on retourne l'information de l'horaire solaire de la journee
-    if isinstance(latitude, (float, int)) and isinstance(longitude, (float, int)):
-        reponse['latitude'] = latitude
-        reponse['longitude'] = longitude
-        reponse['solaire_utc'] = calculer_horaire_solaire(latitude, longitude)
-        reponse['ok'] = True
-
-    reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(Constantes.KIND_COMMANDE, reponse, action='timezoneInfo')
-
-    attacher_reponse_chiffree(correlation_appareil, reponse, enveloppe=None)
-
-    await websocket.send(json.dumps(reponse).encode('utf-8'))
-
-
-def calculer_horaire_solaire(latitude, longitude):
+def calculer_horaire_solaire(latitude: Union[float, int], longitude: Union[float, int]):
 
     location_info = LocationInfo("ici", "ici", "UTC", latitude, longitude)
 
@@ -264,37 +553,16 @@ def calculer_horaire_solaire(latitude, longitude):
     return timestamp_vals
 
 
-async def handle_get_relais_web(handler, correlation_appareil):
-    server = handler.server
-    websocket = handler.websocket
-    etat = server.etat_senseurspassifs
-
-    fiche = dict(etat.fiche_publique)
-    if fiche is not None:
-        try:
-            url_relais = parse_fiche_relais(fiche)
-
-            # url_relais = [app['url'] for app in fiche['applications']['senseurspassifs_relai'] if
-            #               app['nature'] == 'dns']
-
-            reponse = {'relais': url_relais}
-            reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(Constantes.KIND_COMMANDE, reponse, action='relaisWeb')
-            attacher_reponse_chiffree(correlation_appareil, reponse, enveloppe=None)
-            await websocket.send(json.dumps(reponse).encode('utf-8'))
-        except KeyError:
-            pass  # OK, pas de timezone
-
-
 def parse_fiche_relais(fiche: dict):
     app_instance_pathname = dict()
     for instance_id, app_params in fiche['applicationsV2']['senseurspassifs_relai']['instances'].items():
         try:
             app_instance_pathname[instance_id] = app_params['pathname']
-            logger.debug("instance_id %s pathname %s" % (instance_id, app_params['pathname']))
+            LOGGER.debug("instance_id %s pathname %s" % (instance_id, app_params['pathname']))
         except KeyError:
             pass
 
-    logger.debug("relais %d instances" % len(app_instance_pathname))
+    LOGGER.debug("relais %d instances" % len(app_instance_pathname))
 
     url_relais = list()
     for instance_id, instance_params in fiche['instances'].items():
@@ -315,175 +583,3 @@ def parse_fiche_relais(fiche: dict):
             pass
 
     return url_relais
-
-
-async def handle_requete(server, websocket, correlation_appareil, requete: dict, enveloppe):
-    try:
-        logger.debug("handle_post_request Etat recu %s" % requete)
-
-        etat = server.etat_senseurspassifs
-        user_id = enveloppe.get_user_id
-        routage_requete = requete['routage']
-        action_requete = routage_requete['action']
-
-        # S'assurer d'avoir un appareil de role senseurspassifs
-        if user_id is None or 'senseurspassifs' not in enveloppe.get_roles:
-            logger.error("Requete refusee pour roles %s" % enveloppe.get_roles)
-            return
-
-        # Touch (conserver presence appareil)
-        await server.message_handler.enregistrer_appareil(enveloppe, emettre_lectures=False)
-
-        # Emettre la requete
-        domaine_requete = routage_requete['domaine']
-        partition_requete = routage_requete.get('partition')
-        exchange = Constantes.SECURITE_PRIVE
-
-        producer = etat.producer
-
-        try:
-            reponse = await producer.executer_requete(
-                requete, domaine_requete, action_requete, exchange, partition_requete, noformat=True)
-            reponse = reponse.parsed['__original']
-
-            # Injecter _action (en-tete de reponse ne contient pas d'action)
-            reponse['attachements'] = {'action': action_requete}
-
-            attacher_reponse_chiffree(correlation_appareil, reponse, enveloppe=None)
-
-            await websocket.send(json.dumps(reponse).encode('utf-8'))
-        except asyncio.TimeoutError:
-            pass
-
-    except Exception:
-        logger.exception("Erreur traitement requete")
-
-
-async def handle_renouvellement(handler, correlation_appareil, commande: dict, enveloppe):
-    try:
-        logger.debug("handle_renouvellement Demande recue %s" % commande)
-
-        server = handler.server
-        websocket = handler.websocket
-        etat = server.etat_senseurspassifs
-
-        # Verifier - s'assure que la signature est valide et certificat est encore actif
-        user_id = enveloppe.get_user_id
-
-        # S'assurer d'avoir un appareil de role senseurspassifs
-        if user_id is None or 'senseurspassifs' not in enveloppe.get_roles:
-            logger.info("handle_renouvellement Role certificat renouvellement invalide : %s" % enveloppe.get_roles)
-            return  # Skip
-
-        routage = commande['routage']
-        try:
-            if routage['action'] != 'signerAppareil' or routage['domaine'] != 'SenseursPassifs':
-                logger.info("handle_renouvellement Action/domaine certificat renouvellement invalide")
-                return  # Skip
-        except KeyError:
-            logger.info("handle_renouvellement Action/domaine certificat renouvellement invalide")
-            return  # Skip
-
-        # Faire le relai de la commande - CorePki/certissuer s'occupent des renouvellements de certs actifs
-        producer = etat.producer
-
-        try:
-            reponse = await producer.executer_commande(
-                commande, 'SenseursPassifs', 'signerAppareil', Constantes.SECURITE_PRIVE, noformat=True)
-            reponse = reponse.parsed['__original']
-
-            # Injecter _action (en-tete de reponse ne contient pas d'action)
-            reponse['attachements'] = {'action': 'signerAppareil'}
-
-            attacher_reponse_chiffree(correlation_appareil, reponse, enveloppe=None)
-
-            reponse_bytes = json.dumps(reponse).encode('utf-8')
-
-            await websocket.send(reponse_bytes)
-        except asyncio.TimeoutError:
-            logger.info("handle_renouvellement Erreur commande signerAppareil (timeout)")
-
-    except Exception as e:
-        logger.error("handle_renouvellement Erreur %s" % str(e))
-
-
-async def handle_get_fiche(handler, correlation_appareil, commande: dict, enveloppe):
-    server = handler.server
-    websocket = handler.websocket
-    etat = server.etat_senseurspassifs
-
-    fiche = dict(etat.fiche_publique)
-    if fiche is not None:
-        reponse_bytes = json.dumps(fiche).encode('utf-8')
-        await websocket.send(reponse_bytes)
-
-
-async def handle_echanger_cles_chiffrage(handler, correlation_appareil, commande: dict, enveloppe):
-    server = handler.server
-    websocket = handler.websocket
-    etat = server.etat_senseurspassifs
-
-    user_id = enveloppe.get_user_id
-
-    # S'assurer d'avoir un appareil de role senseurspassifs
-    if user_id is None or 'senseurspassifs' not in enveloppe.get_roles:
-        logger.info("Mauvais role certificat (%s) pour etat appareil" % enveloppe.get_roles)
-        return
-    correlation = await server.message_handler.enregistrer_appareil(enveloppe, emettre_lectures=False)
-    await handler.set_correlation(correlation)
-
-    contenu = json.loads(commande['contenu'])
-
-    try:
-        version = contenu['version']
-        handler.set_version(version)
-    except (AttributeError, KeyError):
-        logger.debug("Version non disponible")
-
-    # Valider enveloppe, doit correspondre a l'appareil authentifie
-    logger.debug("handle_echanger_cles_chiffrage commande : %s" % commande)
-    cle_peer = contenu['peer']
-    cle_publique_locale = await server.message_handler.echanger_cle_chiffrage(enveloppe, cle_peer)
-
-    reponse = {'peer': cle_publique_locale}
-    reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(
-        Constantes.KIND_COMMANDE, reponse, action='echangerSecret')
-
-    reponse_bytes = json.dumps(reponse).encode('utf-8')
-    await websocket.send(reponse_bytes)
-
-
-async def handle_confirmer_relai(handler, correlation_appareil, commande: dict, enveloppe):
-    # Verifier que la commande est bien pour le certificat local
-    server = handler.server
-    websocket = handler.websocket
-    etat = server.etat_senseurspassifs
-    fingerprint = enveloppe.fingerprint
-
-    try:
-        # Transmettre la commande de confirmation vers le domaine SenseursPassifs
-        # Va permettre de faire le relai de l'etat du senseur via signature locale
-        if commande['routage']['action'] != 'confirmerRelai' or commande['routage']['domaine'] != 'SenseursPassifs':
-            raise Exception('handle_confirmer_relai: mauvais domaine/action pour commande confirmation : %s' % commande['routage'])
-
-        producer = etat.producer
-        await asyncio.wait_for(producer.producer_pret().wait(), 1)
-        await producer.executer_commande(commande, 'SenseursPassifs', 'confirmerRelai', Constantes.SECURITE_PRIVE,
-                                         noformat=True, timeout=5)
-
-        # Tout est pret, le relai peut maintenant signer le contenu du client
-        server.message_handler.activer_relai_messages(fingerprint)
-
-    except:
-        logger.exception("Erreur confirmation relai avec domaine, desactiver chiffrage avec microcontrolleur")
-        server.message_handler.clear_chiffrage(fingerprint)
-        # Desactiver le chiffrage avec le client
-        reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(
-            Constantes.KIND_COMMANDE, dict(), action='resetSecret')
-        reponse_bytes = json.dumps(reponse).encode('utf-8')
-        await websocket.send(reponse_bytes)
-
-    # reponse, _ = server.etat_senseurspassifs.formatteur_message.signer_message(
-    #     Constantes.KIND_COMMANDE, reponse, action='echangerSecret')
-
-    pass

@@ -1,13 +1,10 @@
 import base64
 import binascii
 import json
-import secrets
 
 from typing import Union, Optional
 
-from base64 import b64encode
 from Crypto.Cipher import ChaCha20_Poly1305
-from Crypto.Random import get_random_bytes
 
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
 from cryptography.hazmat.primitives import serialization

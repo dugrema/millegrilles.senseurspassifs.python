@@ -1,40 +1,55 @@
+import asyncio
 import argparse
+import logging
 import os
 
 from typing import Optional
 
-from senseurspassifs_relai_web import Constantes
+from millegrilles_messages.bus.BusConfiguration import MilleGrillesBusConfiguration
+from senseurspassifs_relai_web import Constantes as RelayConstants
 
-CONST_WEB_PARAMS = [
-    Constantes.ENV_WEB_PORT,
-    Constantes.ENV_WEBSOCKET_PORT,
-    Constantes.PARAM_CERT_PATH,
-    Constantes.PARAM_KEY_PATH,
-    Constantes.PARAM_CA_PATH,
-]
+LOGGING_NAMES = [__name__, 'millegrilles_messages', 'senseurspassifs_relai_web']
 
 
-class ConfigurationWeb:
+def __adjust_logging(args: argparse.Namespace):
+    logging_format = '%(levelname)s:%(name)s:%(message)s'
+
+    if args.logtime:
+        logging_format = f'%(asctime)s - {logging_format}'
+
+    logging.basicConfig(format=logging_format)
+
+    if args.verbose is True:
+        asyncio.get_event_loop().set_debug(True)  # Asyncio warnings
+        for log in LOGGING_NAMES:
+            logging.getLogger(log).setLevel(logging.DEBUG)
+    else:
+        for log in LOGGING_NAMES:
+            logging.getLogger(log).setLevel(logging.INFO)
+
+
+def _parse_command_line():
+    parser = argparse.ArgumentParser(description="Instance manager for MilleGrilles")
+    parser.add_argument(
+        '--verbose', action="store_true", required=False,
+        help="More logging"
+    )
+    parser.add_argument(
+        '--logtime', action="store_true", required=False,
+        help="Add time to logging"
+    )
+
+    args = parser.parse_args()
+    __adjust_logging(args)
+    return args
+
+
+class SenseurspassifsRelaiWebConfiguration(MilleGrillesBusConfiguration):
 
     def __init__(self):
-        self.port = '443'
-        self.websocket_port = '444'
-        self.cert_pem_path = '/run/secrets/pki.senseurspassifs_relai_web.cert'
-        self.key_pem_path = '/run/secrets/pki.senseurspassifs_relai_web.key'
-        self.ca_pem_path = '/run/secrets/pki.millegrille'
-
-    def get_env(self) -> dict:
-        """
-        Extrait l'information pertinente pour pika de os.environ
-        :return: Configuration dict
-        """
-        config = dict()
-        for opt_param in CONST_WEB_PARAMS:
-            value = os.environ.get(opt_param)
-            if value is not None:
-                config[opt_param] = value
-
-        return config
+        super().__init__()
+        self.web_port = 443
+        self.websocket_port = 444
 
     def parse_config(self, configuration: Optional[dict] = None):
         """
@@ -42,12 +57,21 @@ class ConfigurationWeb:
         :param configuration:
         :return:
         """
-        dict_params = self.get_env()
-        if configuration is not None:
-            dict_params.update(configuration)
+        super().parse_config()
 
-        self.port = int(dict_params.get(Constantes.ENV_WEB_PORT) or self.port)
-        self.websocket_port = int(dict_params.get(Constantes.ENV_WEBSOCKET_PORT) or self.websocket_port)
-        self.cert_pem_path = dict_params.get(Constantes.PARAM_CERT_PATH) or self.cert_pem_path
-        self.key_pem_path = dict_params.get(Constantes.PARAM_KEY_PATH) or self.key_pem_path
-        self.ca_pem_path = dict_params.get(Constantes.PARAM_CA_PATH) or self.ca_pem_path
+        web_port = os.environ.get(RelayConstants.ENV_WEB_PORT)
+        if web_port:
+            self.web_port = int(web_port)
+
+        websocket_port = os.environ.get(RelayConstants.ENV_WEBSOCKET_PORT)
+        if websocket_port:
+            self.websocket_port = int(websocket_port)
+
+    @staticmethod
+    def load():
+        # Override
+        config = SenseurspassifsRelaiWebConfiguration()
+        _parse_command_line()
+        config.parse_config()
+        config.reload()
+        return config
