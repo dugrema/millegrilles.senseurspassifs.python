@@ -6,7 +6,7 @@ import logging
 from asyncio import Event, AbstractEventLoop, TimeoutError
 from typing import Optional
 
-from millegrilles_messages.docker.Entretien import TacheEntretien
+from millegrilles_messages.docker_obsolete.Entretien import TacheEntretien
 from millegrilles_senseurspassifs.Configuration import ConfigurationSenseursPassifs
 from millegrilles_senseurspassifs.EtatSenseursPassifs import EtatSenseursPassifs
 from millegrilles_senseurspassifs.RabbitMQDao import RabbitMQDao
