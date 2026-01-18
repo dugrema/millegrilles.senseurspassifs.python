@@ -226,6 +226,8 @@ class WebSocketClientHandler:
                     return await self.__handle_echanger_cles_chiffrage(commande, enveloppe)
                 elif action == 'confirmerRelai':
                     return await self.__handle_confirmer_relai(commande, enveloppe)
+                else:
+                    LOGGER.error(f"handle_message Unknown action {action} on device {self.__uuid_appareil}")
             else:
                 # Encrypted message
                 ciphertext = commande['ciphertext']
@@ -243,16 +245,16 @@ class WebSocketClientHandler:
                         return await self.__handle_get_relais_web()
                     elif action == 'getTimezoneInfo':
                         return await self.__handle_get_timezone_info(commande)
+                    else:
+                        self.__logger.warning(f"Received unknown encrypted command {action} from {self.__uuid_appareil}")
                 except asyncio.CancelledError as e:
                     raise e
                 except Exception:
-                    LOGGER.exception('Erreur dechiffrage, on desactive le chiffrage')
+                    LOGGER.exception(f"Decryption error on {self.__uuid_appareil}, deactivating encryption with resetSecret")
                     self.__correlation.clear_chiffrage()
                     reponse, _ = self.__manager.context.formatteur.signer_message(
                         Constantes.KIND_COMMANDE, dict(), action='resetSecret')
                     await self.__websocket.send(json.dumps(reponse).encode('utf-8'))
-
-            LOGGER.error("handle_message Action inconnue %s" % action)
 
         except asyncio.CancelledError as e:
             raise e
