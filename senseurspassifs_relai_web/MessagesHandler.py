@@ -1,18 +1,16 @@
 # Effectue la correlation des messages pour appareils web
 import asyncio
 import datetime
-import logging
 import json
+import logging
 from asyncio import TaskGroup
-
 from typing import Optional, Union
 
 import pytz
-
 from millegrilles_messages.messages import Constantes
-
 from millegrilles_messages.messages.EnveloppeCertificat import EnveloppeCertificat
 from millegrilles_messages.messages.MessagesModule import MessageWrapper
+
 from senseurspassifs_relai_web.Chiffrage import preparer_cle_chiffrage
 from senseurspassifs_relai_web.Context import SenseurspassifsRelaiWebContext
 
@@ -22,9 +20,8 @@ EXPIRATION_REQUETE_CERTIFICAT = datetime.timedelta(minutes=3)
 
 
 class CorrelationHook:
-
     def __init__(self):
-        self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
+        self.__logger = logging.getLogger(__name__ + "." + self.__class__.__name__)
 
         self.__derniere_activite = datetime.datetime.now(tz=pytz.UTC)
         self.__reponse = asyncio.Queue(3)
@@ -35,13 +32,18 @@ class CorrelationHook:
 
     @property
     def expire(self):
-        return datetime.datetime.now(tz=pytz.UTC) - self.__derniere_activite > EXPIRATION_REQUETE_CERTIFICAT
+        return (
+            datetime.datetime.now(tz=pytz.UTC) - self.__derniere_activite
+            > EXPIRATION_REQUETE_CERTIFICAT
+        )
 
     @property
     def is_message_pending(self):
         return not self.__reponse.empty()
 
-    async def put_message(self, message: Optional[Union[dict, MessageWrapper]], nowait=True):
+    async def put_message(
+        self, message: Optional[Union[dict, MessageWrapper]], nowait=True
+    ):
         try:
             if nowait:
                 self.__reponse.put_nowait(message)
@@ -50,7 +52,9 @@ class CorrelationHook:
         except asyncio.QueueFull:
             self.__logger.error("Erreur reception message appareil, Q full")
 
-    async def get_reponse(self, timeout: Optional[int] = 60) -> Optional[MessageWrapper]:
+    async def get_reponse(
+        self, timeout: Optional[int] = 60
+    ) -> Optional[MessageWrapper]:
         if timeout is None:
             reponse = self.__reponse.get_nowait()
         else:
@@ -73,7 +77,7 @@ class CorrelationAppareil(CorrelationHook):
 
     def __init__(self, certificat: EnveloppeCertificat, emettre_lectures=True):
         super().__init__()
-        self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
+        self.__logger = logging.getLogger(__name__ + "." + self.__class__.__name__)
         self.__certificat = certificat
         self.__senseurs_externes: Optional[list] = None
         self.__lectures_pending = dict()
@@ -108,16 +112,15 @@ class CorrelationAppareil(CorrelationHook):
 
     async def recevoir_lecture(self, message: MessageWrapper):
         parsed = message.parsed
-        uuid_appareil = parsed['uuid_appareil']
+        uuid_appareil = parsed["uuid_appareil"]
         if self.uuid_appareil == uuid_appareil:
             pass  # Skip, ce sont des lectures internes de l'appareil
         else:
             # Verifier si on veut des lectures de cet appareil
             if self.__senseurs_externes is not None:
                 for senseur_externe in self.__senseurs_externes:
-
                     try:
-                        uuid_appareil_externe, nom_senseur = senseur_externe.split(':')
+                        uuid_appareil_externe, nom_senseur = senseur_externe.split(":")
                     except (AttributeError, KeyError):
                         continue  # Mauvais nom, pas un senseur externe
 
@@ -128,23 +131,33 @@ class CorrelationAppareil(CorrelationHook):
                             lectures = dict()
                             self.__lectures_pending[uuid_appareil] = lectures
                         try:
-                            lectures[nom_senseur] = parsed['senseurs'][nom_senseur]
-                            self.__logger.debug("Lectures pending appareil %s : %s" % (self.uuid_appareil, lectures))
+                            lectures[nom_senseur] = parsed["senseurs"][nom_senseur]
+                            self.__logger.debug(
+                                "Lectures pending appareil %s : %s"
+                                % (self.uuid_appareil, lectures)
+                            )
                         except KeyError:
                             pass  # Senseur sans lecture/absent
 
-                if self.__emettre_lectures is True and len(self.__lectures_pending) > 0 and self.is_message_pending is False:
+                if (
+                    self.__emettre_lectures is True
+                    and len(self.__lectures_pending) > 0
+                    and self.is_message_pending is False
+                ):
                     lectures_pending = self.take_lectures_pending()
                     # Aucun message en attente, retourner les lectures immediatement
                     message = {
-                        'ok': True,
-                        'lectures_senseurs': lectures_pending,
-                        '_action': 'lectures_senseurs',
+                        "ok": True,
+                        "lectures_senseurs": lectures_pending,
+                        "_action": "lectures_senseurs",
                     }
                     await self.put_message(message)
 
     def set_senseurs_externes(self, senseurs: Optional[list]):
-        self.__logger.debug("Enregistrement senseurs externes pour appareil %s : %s" % (self.uuid_appareil, senseurs))
+        self.__logger.debug(
+            "Enregistrement senseurs externes pour appareil %s : %s"
+            % (self.uuid_appareil, senseurs)
+        )
         self.__senseurs_externes = senseurs
 
     @property
@@ -165,7 +178,6 @@ class CorrelationAppareil(CorrelationHook):
 
 
 class CorrelationRequeteCertificat(CorrelationHook):
-
     def __init__(self, cle_publique: str, message: dict):
         super().__init__()
         self.__cle_publique = cle_publique
@@ -177,9 +189,8 @@ class CorrelationRequeteCertificat(CorrelationHook):
 
 
 class AppareilMessageHandler:
-
     def __init__(self, context: SenseurspassifsRelaiWebContext):
-        self.__logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
+        self.__logger = logging.getLogger(__name__ + "." + self.__class__.__name__)
         self.__context = context
         self.__appareils: dict[str, CorrelationAppareil] = dict()
         self.__requetes_certificat: dict[str, CorrelationRequeteCertificat] = dict()
@@ -195,7 +206,7 @@ class AppareilMessageHandler:
         await self.__on_stop()
 
     async def __on_stop(self):
-        """ Attempt emitting a disconnect message for all devices. """
+        """Attempt emitting a disconnect message for all devices."""
         pass  # TODO
 
     async def __maintenance_thread(self):
@@ -220,8 +231,12 @@ class AppareilMessageHandler:
         except KeyError:
             pass
 
-    async def create_device_correlation(self, certificat: EnveloppeCertificat, senseurs: Optional[list] = None,
-                                        emettre_lectures=True) -> CorrelationAppareil:
+    async def create_device_correlation(
+        self,
+        certificat: EnveloppeCertificat,
+        senseurs: Optional[list] = None,
+        emettre_lectures=True,
+    ) -> CorrelationAppareil:
         """
         Create a correlation for a device. If correlation already exists, returns it.
         :param certificat:
@@ -268,69 +283,98 @@ class AppareilMessageHandler:
             del self.__requetes_certificat[cle_publique]
 
     async def recevoir_message_mq(self, message: MessageWrapper):
-
         # Tenter match par fingerprint certificat (pubkey)
         try:
             await self.__appareils[message.pubkey].put_message(message)
-            self.__logger.debug("Routing message MQ appareil via fingerprint %s" % message.pubkey)
+            self.__logger.debug(
+                "Routing message MQ appareil via fingerprint %s" % message.pubkey
+            )
             return
         except KeyError:
             pass
 
         # Tenter match par cle_publique
         try:
-            await self.__requetes_certificat[message.parsed['cle_publique']].put_message(message)
-            self.__logger.debug("Routing message MQ appareil via cle_publiquye %s" % message.parsed['cle_publique'])
+            await self.__requetes_certificat[
+                message.parsed["cle_publique"]
+            ].put_message(message)
+            self.__logger.debug(
+                "Routing message MQ appareil via cle_publiquye %s"
+                % message.parsed["cle_publique"]
+            )
             return
         except KeyError:
             pass
 
-        action = message.routage['action']
-        if action == 'fichePublique':
+        action = message.routage["action"]
+        if action == "fichePublique":
             # Conserver la fichePublique
             self.__logger.debug("Fiche publique mise a jour")
             fiche = message.parsed
-            fiche['certificat'] = message.certificat.chaine_pem()
+            fiche["certificat"] = message.certificat.chaine_pem()
             self.__context.fiche_publique = fiche
             return
 
-        user_id = message.routage['partition']
+        user_id = message.routage["partition"]
 
-        if action == 'lectureConfirmee':
+        if action == "lectureConfirmee":
             # Permettre a chaque appareil de l'usager de recevoir la lecture
             for app in self.__appareils.values():
                 if app.user_id == user_id:
                     try:
                         await app.recevoir_lecture(message)
                     except Exception:
-                        self.__logger.exception("Erreur traitement message appareil %s" % app.uuid_appareil)
+                        self.__logger.exception(
+                            "Erreur traitement message appareil %s" % app.uuid_appareil
+                        )
             return
-        elif action == 'commandeAppareil':
-            # Permettre a chaque appareil de l'usager de recevoir la lecture
+        elif action == "commandeAppareil":
             certificat = message.certificat
             user_id_certificat = certificat.get_user_id
+            uuid_appareil = "NOT PROVIDED"
             try:
-                uuid_appareil = message.parsed['uuid_appareil']
+                uuid_appareil = message.parsed["uuid_appareil"]
                 for app in self.__appareils.values():
-                    if app.uuid_appareil == uuid_appareil and app.user_id == user_id_certificat:
+                    if (
+                        app.uuid_appareil == uuid_appareil
+                        and app.user_id == user_id_certificat
+                    ):
                         try:
                             await app.put_message(message, nowait=False)
                             return
                         except Exception:
-                            self.__logger.exception("Erreur traitement commande appareil %s" % app.uuid_appareil)
+                            self.__logger.exception(
+                                "Erreur traitement commande appareil %s"
+                                % app.uuid_appareil
+                            )
+
+                # Sub-device not found (return in loop not called)
+                self.__logger.warning(
+                    f"Received commandeAppareil for device {uuid_appareil}, no match on sub_device or user_id, ignoring command")
             except KeyError:
+                self.__logger.warning(f"Received commandeAppareil for unknown device {uuid_appareil}, ignoring command")
+                # Unknown device, send failure
+                # producer = await self.__context.bus_connector.get_producer()
+                # Produce status update or add response, need to involve domain
+                # return
                 pass
 
             return
-        elif action in ['evenementMajDisplays', 'evenementMajProgrammes', 'majConfigurationAppareil']:
+        elif action in [
+            "evenementMajDisplays",
+            "evenementMajProgrammes",
+            "majConfigurationAppareil",
+        ]:
             try:
-                uuid_appareil = message.parsed['uuid_appareil']
+                uuid_appareil = message.parsed["uuid_appareil"]
                 for app in self.__appareils.values():
                     if app.uuid_appareil == uuid_appareil and app.user_id == user_id:
                         try:
                             await app.put_message(message, nowait=False)
                         except Exception:
-                            self.__logger.exception("Erreur traitement maj display %s" % app.uuid_appareil)
+                            self.__logger.exception(
+                                "Erreur traitement maj display %s" % app.uuid_appareil
+                            )
             except KeyError:
                 pass
 
@@ -339,13 +383,13 @@ class AppareilMessageHandler:
         self.__logger.warning("Message MQ sans match appareil")
 
     async def request_device_registration(self, message: dict):
-        cle_publique = message['pubkey']
+        cle_publique = message["pubkey"]
         try:
             requete = self.__requetes_certificat[cle_publique]
             requete.touch()
         except KeyError:
             if len(self.__requetes_certificat) >= MAX_REQUETES_CERTIFICAT:
-                raise Exception('request_device_registration Too many waiting requests')
+                raise Exception("request_device_registration Too many waiting requests")
 
             # Conserver nouvelle requete
             requete = CorrelationRequeteCertificat(cle_publique, message)
@@ -360,24 +404,27 @@ class AppareilMessageHandler:
             pass
 
         # Emettre commande certificat vers SenseursPassifs, attendre reponse
-        contenu = json.loads(message['contenu'])
+        contenu = json.loads(message["contenu"])
         producer = await self.__context.get_producer()
         commande = {
-            'uuid_appareil': contenu['uuid_appareil'],
-            'instance_id': self.__context.instance_id,
-            'user_id': contenu['user_id'],
-            'cle_publique': cle_publique,
-            'csr': contenu['csr'],
+            "uuid_appareil": contenu["uuid_appareil"],
+            "instance_id": self.__context.instance_id,
+            "user_id": contenu["user_id"],
+            "cle_publique": cle_publique,
+            "csr": contenu["csr"],
         }
         try:
-            reponse = await producer.command(commande, 'SenseursPassifs', 'inscrireAppareil', Constantes.SECURITE_PRIVE)
+            reponse = await producer.command(
+                commande,
+                "SenseursPassifs",
+                "inscrireAppareil",
+                Constantes.SECURITE_PRIVE,
+            )
             reponse_parsed = reponse.parsed
-            if reponse_parsed.get('certificat') or reponse_parsed.get('challenge'):
+            if reponse_parsed.get("certificat") or reponse_parsed.get("challenge"):
                 return reponse
         except Exception:
             # Attendre la reponse - raise timeout
             self.__logger.exception("request_device_registration Unhandled error")
 
         return await requete.get_reponse(timeout=60)
-
-
