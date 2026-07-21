@@ -1,6 +1,6 @@
 location /senseurspassifs_relai/ws {
-  set $upstream_ws_{appname} https://senseurspassifs_relai:1444;
-  proxy_pass $upstream_ws_{appname};
+  set $upstream_ws_senseurspassifs_relai_ws https://senseurspassifs_relai:1444;
+  proxy_pass $upstream_ws_senseurspassifs_relai_ws;
 
   # proxy_http_version 1.1;  # Present dans component_proxyheaders.include
 
@@ -17,8 +17,8 @@ location /senseurspassifs_relai/ws {
 }
 
 location /senseurspassifs_relai {
-  set $upstream_{appname} https://senseurspassifs_relai:1443;
-  proxy_pass $upstream_{appname};
+  set $upstream_ws_senseurspassifs_relai https://senseurspassifs_relai:1443;
+  proxy_pass $upstream_ws_senseurspassifs_relai;
 
   include /etc/nginx/conf.d/component_proxyheaders.include;
   include /etc/nginx/conf.d/component_gzip.include;
