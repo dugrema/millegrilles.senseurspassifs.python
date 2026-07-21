@@ -3,7 +3,7 @@ pipeline {
 
     parameters {
         string(defaultValue: 'master', name: 'BRANCH')
-        string(defaultValue: '2026.1', name: 'VERSION')
+        string(defaultValue: '2026.3', name: 'VERSION')
         string(defaultValue: 'jenkins-maple', name: 'CREDENTIALS_ID')
         string(defaultValue: 'ssh://git.maple.maceroc.com/git/millegrilles.senseurspassifs.python', name: 'GIT_URL')
         string(defaultValue: 'registry.millegrilles.com:5000/millegrilles/senseurspassifs_python', name: 'DOCKER_IMAGE')
@@ -15,15 +15,15 @@ pipeline {
     }
 
     stages {
-        stage('docker build x86_64') {
+        stage('Checkout') {
             steps {
-                checkout scmGit(branches: [[name: params.BRANCH]], extensions: [submodule(recursiveSubmodules: true, reference: '')], userRemoteConfigs: [[credentialsId: params.CREDENTIALS_ID, url: params.GIT_URL]])
+                checkout scmGit(branches: [[name: params.BRANCH]], extensions: [], userRemoteConfigs: [[credentialsId: params.CREDENTIALS_ID, url: params.GIT_URL]])
+            }
+        }
 
-                sh '''
-                # Creer image docker
-                docker build -t ${DOCKER_IMAGE}:${VBUILD} .
-                docker push ${DOCKER_IMAGE}:${VBUILD}
-                '''
+        stage('Build & Package & Deploy') {
+            steps {
+                sh "make deploy VERSION_FULL=${VBUILD}"
             }
         }
     }
