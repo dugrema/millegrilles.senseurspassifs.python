@@ -1,0 +1,67 @@
+include:
+  - path: ../include/app_net.yml
+    project_directory: ..
+
+name: ${INSTANCE_NAME}
+
+services:
+  senseurspassifs_relai:
+    image: "replace_me"
+    command: ["-m", "senseurspassifs_relai_web"]
+    x-millegrilles-certificat:
+      roles:
+        - senseurspassifs_relai
+      exchanges:
+        - 2.prive
+        - 1.public
+      dns:
+        localhost: true
+        hostnames:
+          - senseurspassifs_relai
+        domain: true
+      split: true
+    environment:
+      - MQ_HOSTNAME=${MQ_HOSTNAME:-mq}
+      - MQ_PORT=${MQ_PORT:-5673}
+      - MG_REDIS_HOST=redis
+      - MG_REDIS_PORT=6379
+      - REDIS_PASSWORD_PATH=/run/secrets/passwd.redis.txt
+      - CERT_PATH=/run/secrets/cert.pem
+      - KEY_PATH=/run/secrets/key.pem
+      - CA_PATH=/run/secrets/millegrille.pem
+      - WEB_PORT=1443
+      - WEBSOCKET_PORT=1444
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 150M
+      restart_policy:
+        condition: on-failure
+        delay: 20s
+        max_attempts: 1000
+    configs:
+      - source: senseurspassifs_relai
+        target: /run/secrets/cert.pem
+      - source: mgca
+        target: /run/secrets/millegrille.pem
+    secrets:
+      - source: senseurspassifs_relai
+        target: key.pem
+      - source: passwd_redis
+        target: passwd.redis.txt
+    hostname: senseurspassifs_relai
+    networks:
+      - app_net
+
+configs:
+  senseurspassifs_relai:
+    file: ${MILLEGRILLES_ROOT}/secrets/senseurspassifs_relai.cert.pem
+  mgca:
+    file: ${MILLEGRILLES_ROOT}/etc/millegrille.pem
+
+secrets:
+  senseurspassifs_relai:
+    file: ${MILLEGRILLES_ROOT}/secrets/senseurspassifs_relai.key.pem
+  passwd_redis:
+    file: ${MILLEGRILLES_ROOT}/secrets/redis.txt

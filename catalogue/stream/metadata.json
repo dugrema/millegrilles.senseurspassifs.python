@@ -1,0 +1,8 @@
+{
+  "name": "senseurspassifs_relai",
+  "version": "DEV",
+  "labels": {
+    "en": "Sensors and switches relay",
+    "fr": "Relai pour senseurs et appareils"
+  }
+}

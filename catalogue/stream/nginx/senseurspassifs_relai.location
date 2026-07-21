@@ -1,0 +1,33 @@
+location /senseurspassifs_relai/ws {
+  set $upstream_ws_{appname} https://senseurspassifs_relai:1444;
+  proxy_pass $upstream_ws_{appname};
+
+  # proxy_http_version 1.1;  # Present dans component_proxyheaders.include
+
+  include /etc/nginx/conf.d/component_proxyheaders.include;
+  include /etc/nginx/conf.d/component_gzip.include;
+  proxy_read_timeout 6h;
+  client_max_body_size 64k;
+
+  proxy_ssl_certificate         /run/secrets/nginx.cert.pem;
+  proxy_ssl_certificate_key     /run/secrets/nginx.key.pem;
+  proxy_ssl_trusted_certificate /usr/share/nginx/files/certs/millegrille.cert.pem;
+  proxy_ssl_verify       on;
+  proxy_ssl_verify_depth 1;
+}
+
+location /senseurspassifs_relai {
+  set $upstream_{appname} https://senseurspassifs_relai:1443;
+  proxy_pass $upstream_{appname};
+
+  include /etc/nginx/conf.d/component_proxyheaders.include;
+  include /etc/nginx/conf.d/component_gzip.include;
+  proxy_read_timeout 5m;
+  client_max_body_size 64k;
+
+  proxy_ssl_certificate         /run/secrets/nginx.cert.pem;
+  proxy_ssl_certificate_key     /run/secrets/nginx.key.pem;
+  proxy_ssl_trusted_certificate /usr/share/nginx/files/certs/millegrille.cert.pem;
+  proxy_ssl_verify       on;
+  proxy_ssl_verify_depth 1;
+}
