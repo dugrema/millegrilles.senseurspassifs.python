@@ -1,8 +1,13 @@
 {
   "name": "senseurspassifs_relai",
   "version": "DEV",
+  "securite": "2.prive",
   "labels": {
     "en": "Sensors and switches relay",
     "fr": "Relai pour senseurs et appareils"
-  }
+  },
+  "web": [{
+    "path": "/senseurspassifs_relai",
+    "api": true
+  }]
 }
