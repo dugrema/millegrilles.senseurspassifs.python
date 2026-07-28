@@ -50,7 +50,7 @@ class WebServer:
         runner = web.AppRunner(self.__app)
         await runner.setup()
         ssl_context = self.__manager.context.ssl_context
-        site = web.TCPSite(runner, '0.0.0.0', web_port, ssl_context=ssl_context)
+        site = web.TCPSite(runner, None, web_port, ssl_context=ssl_context)
         try:
             await site.start()
             self.__logger.info("Website started on port %d", web_port)
