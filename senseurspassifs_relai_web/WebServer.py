@@ -114,7 +114,7 @@ class ServeurWebSocket:
     async def __serve(self):
         websocket_port = self.__manager.context.configuration.websocket_port
         ssl_context = self.__manager.context.ssl_context
-        async with serve(self.handle_client, "0.0.0.0", websocket_port, ssl=ssl_context):
+        async with serve(self.handle_client, None, websocket_port, ssl=ssl_context):
             self.__logger.info("Websocket started on port %d", websocket_port)
             await self.__manager.context.wait()  # wait until stopping
 
