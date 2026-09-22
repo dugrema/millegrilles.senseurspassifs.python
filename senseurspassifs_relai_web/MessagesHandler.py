@@ -44,16 +44,16 @@ class CorrelationHook:
     async def put_message(
         self, message: Optional[Union[dict, MessageWrapper]], nowait=True
     ):
-        try:
-            if nowait:
+        if nowait:
+            try:
                 self.__reponse.put_nowait(message)
-            else:
-                await self.__reponse.put(message)
-        except asyncio.QueueFull:
-            self.__logger.error("Erreur reception message appareil, Q full")
+            except asyncio.QueueFull:
+                self.__logger.error("Erreur reception message appareil, Q full")
+        else:
+            await self.__reponse.put(message)
 
     async def get_reponse(
-        self, timeout: Optional[int] = 60
+        self, timeout: Optional[int] = 30
     ) -> Optional[MessageWrapper]:
         if timeout is None:
             reponse = self.__reponse.get_nowait()
@@ -217,7 +217,7 @@ class AppareilMessageHandler:
                 raise e
             except:
                 self.__logger.exception("__maintenance_thread Unhandled exception")
-            await self.__context.wait(120)
+            await self.__context.wait(30)
 
     async def set_device_correlation(self, correlation: CorrelationAppareil):
         fingerprint = correlation.fingerprint
@@ -264,21 +264,21 @@ class AppareilMessageHandler:
         return correlation
 
     async def __maintenance(self):
-        retirer = list()
+        retirer_appareils = list()
         for fingerprint, appareil in self.__appareils.items():
             if appareil.expire:
-                retirer.append(fingerprint)
+                retirer_appareils.append(fingerprint)
 
-        for fingerprint in retirer:
+        for fingerprint in retirer_appareils:
             self.__logger.debug("Retrait appareil expire cle %s" % fingerprint)
             del self.__appareils[fingerprint]
 
-        retirer = list()
+        retirer_requetes = list()
         for cle_publique, requete in self.__requetes_certificat.items():
             if requete.expire:
-                retirer.append(cle_publique)
+                retirer_requetes.append(cle_publique)
 
-        for cle_publique in retirer:
+        for cle_publique in retirer_requetes:
             self.__logger.debug("Retrait requete expiree cle %s" % cle_publique)
             del self.__requetes_certificat[cle_publique]
 
@@ -335,11 +335,10 @@ class AppareilMessageHandler:
             try:
                 uuid_appareil = message.parsed["uuid_appareil"]
                 for app in self.__appareils.values():
-                    if (
-                        app.uuid_appareil == uuid_appareil
-                        and app.user_id == user_id_certificat
-                    ):
+                    if app.uuid_appareil == uuid_appareil and app.user_id == user_id_certificat:
                         try:
+                            # TODO: This potentially blocks all other message processing for devices
+                            #       Put on a separate thread (e.g. queue processing)
                             await app.put_message(message, nowait=False)
                             return
                         except Exception:
@@ -351,13 +350,14 @@ class AppareilMessageHandler:
                 # Sub-device not found (return in loop not called)
                 self.__logger.warning(
                     f"Received commandeAppareil for device {uuid_appareil}, no match on sub_device or user_id, ignoring command")
+                raise Exception('Unknown device')
             except KeyError:
                 self.__logger.warning(f"Received commandeAppareil for unknown device {uuid_appareil}, ignoring command")
                 # Unknown device, send failure
                 # producer = await self.__context.bus_connector.get_producer()
                 # Produce status update or add response, need to involve domain
                 # return
-                pass
+                raise Exception('Unknown device')
 
             return
         elif action in [
@@ -370,6 +370,8 @@ class AppareilMessageHandler:
                 for app in self.__appareils.values():
                     if app.uuid_appareil == uuid_appareil and app.user_id == user_id:
                         try:
+                            # TODO: This potentially blocks all other message processing for devices
+                            #       Put on a separate thread (e.g. queue processing)
                             await app.put_message(message, nowait=False)
                         except Exception:
                             self.__logger.exception(

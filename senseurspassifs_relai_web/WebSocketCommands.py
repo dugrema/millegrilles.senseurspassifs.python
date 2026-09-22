@@ -95,9 +95,16 @@ class WebSocketClientHandler:
 
     async def __connection_closed_waiter(self):
         await self.__websocket.wait_closed()
+
+        if self.__correlation:
+            fingerprint = self.__correlation.fingerprint
+            self.__logger.debug(f"Closing websocket connection for {fingerprint}")
+            # Ensure we remove the correlation from manager
+            self.__manager.remove_device_correlation(fingerprint)
+            await self.__correlation.put_message(None)
+
         # Release all threads
         self.__client_stopping.set()
-        await self.__correlation.put_message(None)
 
     async def __watchdog(self):
         while self.__manager.context.stopping is False and self.__client_stopping.is_set() is False:
@@ -106,7 +113,7 @@ class WebSocketClientHandler:
                 await self.websocket.close(CloseCode.TRY_AGAIN_LATER, "Timeout")
                 return
             try:
-                await asyncio.wait_for(self.__client_stopping.wait(), 60)
+                await asyncio.wait_for(self.__client_stopping.wait(), 10)
                 return  # Stopping
             except asyncio.TimeoutError:
                 pass
@@ -136,7 +143,7 @@ class WebSocketClientHandler:
         except Exception:
             self.__logger.exception("__recevoir_messages Erreur emettre presence appareil")
 
-        self.__logger.debug("__recevoir_messages Fin connexion '%s'" % self.__date_connexion)
+        self.__logger.debug(f"__recevoir_messages Fin connexion {self.__uuid_appareil} (date connexion: {self.__date_connexion})")
 
     async def __relai_messages(self):
         await self.__event_correlation.wait()
@@ -144,6 +151,9 @@ class WebSocketClientHandler:
 
         while self.__websocket.state.value != State.CLOSED:
             try:
+                if not self.__correlation or self.__correlation.response_queue is None:
+                    raise Exception("Unsupported state - correlation/response queue is None")
+
                 reponse = await self.__correlation.response_queue.get()
                 if self.__manager.context.stopping or self.__client_stopping.is_set():
                     return  # Stopping
@@ -151,14 +161,17 @@ class WebSocketClientHandler:
                 if isinstance(reponse, MessageWrapper):
                     reponse = reponse.parsed['__original']
                 elif isinstance(reponse, dict):
-                    continue
+                    pass        # Passthrough
+                else:
+                    continue    # Unsupported message type
 
-                if reponse is not None:
-                    attacher_reponse_chiffree(self.__correlation, reponse, enveloppe=None)
-                    await self.__websocket.send(json.dumps(reponse).encode('utf-8'))
+                attacher_reponse_chiffree(self.__correlation, reponse, enveloppe=None)
+                await self.__websocket.send(json.dumps(reponse).encode('utf-8'))
 
             except asyncio.TimeoutError:
                 pass
+
+        self.__logger.debug(f"__relai_messages Thread closed for device_id {self.__uuid_appareil}")
 
     async def __relai_lectures(self):
         await self.__event_correlation.wait()
@@ -251,7 +264,8 @@ class WebSocketClientHandler:
                     raise e
                 except Exception:
                     LOGGER.exception(f"Decryption error on {self.__uuid_appareil}, deactivating encryption with resetSecret")
-                    self.__correlation.clear_chiffrage()
+                    if self.__correlation:
+                        self.__correlation.clear_chiffrage()
                     reponse, _ = self.__manager.context.formatteur.signer_message(
                         Constantes.KIND_COMMANDE, dict(), action='resetSecret')
                     await self.__websocket.send(json.dumps(reponse).encode('utf-8'))
@@ -260,7 +274,6 @@ class WebSocketClientHandler:
             raise e
         except Exception as e:
             LOGGER.error("handle_message Unhandled error %s" % str(e))
-
 
     async def __handle_status(self, commande: dict):
         try:
@@ -504,7 +517,6 @@ class WebSocketClientHandler:
 
         reponse_bytes = json.dumps(reponse).encode('utf-8')
         await self.__websocket.send(reponse_bytes)
-
 
     async def __handle_confirmer_relai(self, commande: dict, enveloppe: EnveloppeCertificat):
         # Verifier que la commande est bien pour le certificat local

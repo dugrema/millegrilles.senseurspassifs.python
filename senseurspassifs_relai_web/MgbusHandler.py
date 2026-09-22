@@ -64,9 +64,22 @@ class MgbusHandler:
         action = message.routage['action']
 
         if action in ['challengeAppareil', 'commandeAppareil']:
-            return await self.__manager.handle_message(message)
+            try:
+                response = await self.__manager.handle_message(message)
+                if not response:
+                    response, _ = self.__manager.context.formatteur.signer_message(
+                        Constantes.KIND_REPONSE,
+                        {'ok': False, 'err': 'Unhandled'},
+                    )
+            except Exception as ex:
+                response, _ = self.__manager.context.formatteur.signer_message(
+                    Constantes.KIND_REPONSE,
+                    {'ok': False, 'err': str(ex)},
+                )
+            return response
 
         self.__logger.info("on_exclusive_message Ignoring unknown action %s" % action)
+        return None
 
     async def on_event_message(self, message: MessageWrapper):
         # Authorization check
