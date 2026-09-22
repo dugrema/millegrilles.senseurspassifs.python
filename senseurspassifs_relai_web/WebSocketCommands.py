@@ -161,9 +161,10 @@ class WebSocketClientHandler:
                 if isinstance(reponse, MessageWrapper):
                     reponse = reponse.parsed['__original']
                 elif isinstance(reponse, dict):
-                    pass        # Passthrough
-                else:
-                    continue    # Unsupported message type
+                    # pass        # Passthrough
+                    continue    # Reverting behavior
+                #else:
+                #    continue    # Unsupported message type
 
                 attacher_reponse_chiffree(self.__correlation, reponse, enveloppe=None)
                 await self.__websocket.send(json.dumps(reponse).encode('utf-8'))
