@@ -438,7 +438,7 @@ class WebSocketClientHandler:
         except Exception:
             LOGGER.exception("Erreur traitement requete")
 
-    async def __handle_renouvellement(self, commande: dict, enveloppe):
+    async def __handle_renouvellement(self, commande: dict, enveloppe: EnveloppeCertificat):
         try:
             LOGGER.debug("handle_renouvellement Demande recue %s" % commande)
 
@@ -462,6 +462,7 @@ class WebSocketClientHandler:
             # Faire le relai de la commande - CorePki/certissuer s'occupent des renouvellements de certs actifs
             try:
                 producer = await self.__manager.context.get_producer()
+                commande['certificat'] = enveloppe.chaine_pem()
                 reponse = await producer.command(
                     commande, 'SenseursPassifs', 'signerAppareil', Constantes.SECURITE_PRIVE, noformat=True)
                 reponse = reponse.parsed['__original']

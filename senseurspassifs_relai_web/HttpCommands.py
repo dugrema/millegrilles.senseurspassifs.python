@@ -45,6 +45,7 @@ async def handle_post_inscrire(request: Request, manager: SenseurspassifsRelaiWe
                 # Timeout (commande inscription sans certificat/challenge)
                 reponse = {'ok': False}
         except asyncio.TimeoutError:
+            logger.warning(f"Timeout getting device registration info from SenseursPassifs")
             reponse = {'ok': False, 'err': 'Timeout'}
 
         reponse, _ = context.formatteur.signer_message(Constantes.KIND_REPONSE, reponse)
