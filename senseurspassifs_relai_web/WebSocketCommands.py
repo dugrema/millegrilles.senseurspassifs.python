@@ -40,6 +40,7 @@ class WebSocketClientHandler:
         self.__uuid_appareil: Optional[str] = None
         self.__user_id: Optional[str] = None
         self.__version: Optional[str] = None
+        self.__version_emise = False
 
         self.__client_stopping = asyncio.Event()
 
@@ -57,20 +58,25 @@ class WebSocketClientHandler:
     async def presence_appareil(self, deconnecte=False):
         evenement = None
         if self.__uuid_appareil and self.__user_id:
-            if deconnecte is True:
+            if deconnecte:
                 evenement = {'uuid_appareil': self.__uuid_appareil, 'user_id': self.__user_id, 'deconnecte': True}
-            elif self.__presence_emise is None:
+            elif self.__presence_emise is None or self.__presence_emise + datetime.timedelta(minutes=3) < datetime.datetime.now():
                 evenement = {'uuid_appareil': self.__uuid_appareil, 'user_id': self.__user_id, 'version': self.__version}
+            elif not self.__version_emise and self.__version:
+                evenement = {'uuid_appareil': self.__uuid_appareil, 'user_id': self.__user_id,
+                             'version': self.__version}
 
         if evenement:
             producer = await self.__manager.context.get_producer()
-
+            self.__logger.debug("Emit presence %s" % evenement)
             await producer.event(evenement,
                                  domain='senseurspassifs_relai',
                                  action='presenceAppareil',
                                  exchange=Constantes.SECURITE_PRIVE)
 
             self.__presence_emise = datetime.datetime.now()
+            if self.__version:
+                self.__version_emise = True
 
     async def run(self):
         self.__logger.debug("run Connexion client %s" % self.__correlation)
