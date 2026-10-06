@@ -275,6 +275,7 @@ class WebSocketClientHandler:
             raise e
         except Exception as e:
             LOGGER.error("handle_message Unhandled error %s" % str(e))
+            LOGGER.debug("handle_message Error CONTENT: %s" % message)
 
     async def __handle_status(self, commande: dict):
         try:
