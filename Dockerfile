@@ -1,5 +1,8 @@
 FROM registry.millegrilles.com/millegrilles/messages_python:2026.4.12 AS stage1
 
+ARG PIP_INDEX_URL=https://pypi.org/simple/
+ARG PIP_TRUSTED_HOST=pypi.org
+
 ENV BUILD_FOLDER=/opt/millegrilles/build \
     BUNDLE_FOLDER=/opt/millegrilles/dist \
     PYTHONPATH=/opt/millegrilles/dist \
@@ -13,6 +16,9 @@ RUN pip3 install --no-cache-dir -r $BUILD_FOLDER/requirements.txt && \
     mkdir -p /var/opt/millegrilles/senseurspassifs && chown 1000:1000 /var/opt/millegrilles/senseurspassifs
 
 FROM stage1
+
+ARG PIP_INDEX_URL=https://pypi.org/simple/
+ARG PIP_TRUSTED_HOST=pypi.org
 
 ENV WEB_PORT=1443 \
     WEBSOCKET_PORT=1444
