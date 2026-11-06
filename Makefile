@@ -93,7 +93,7 @@ deploy: package
 			fi; \
 			echo "==> Deploying $$NAME"; \
 			rsync "$(ARTIFACTS_DIR)/$$NAME.$(VERSION_FULL).tar.gz" ${DEPLOY_RSYNC_WEBAPP_DEST}/senseurspassifs/${NAME}/; \
-			${DEPLOY_CATALOGUE_UPDATE_COMMAND} --baseurl https://libs.maple.maceroc.com/archives/senseurspassifs --archive archives/senseurspassifs/"$$NAME.$(VERSION_FULL).tar.gz"; \
+			${DEPLOY_CATALOGUE_UPDATE_COMMAND} --baseurl ${DEPLOY_ARCHIVE_URL}/senseurspassifs --archive archives/senseurspassifs/"$$NAME.$(VERSION_FULL).tar.gz"; \
 		fi; \
 	done
 
